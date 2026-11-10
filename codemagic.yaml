@@ -1,0 +1,14 @@
+workflows:
+  android-native-workflow:
+    name: Android Native Build v76.0
+    max_build_duration: 120
+    environment:
+      android_signing:
+        - reference: release_key
+    scripts:
+      - name: Build Android APK
+        script: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
