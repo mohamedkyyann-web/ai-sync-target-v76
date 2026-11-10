@@ -2,8 +2,6 @@ workflows:
   android-native-workflow:
     name: Android Native Build v76.0
     max_build_duration: 120
-    environment:
-      flutter: false
     scripts:
       - name: Grant execute permission for gradlew
         script: |
