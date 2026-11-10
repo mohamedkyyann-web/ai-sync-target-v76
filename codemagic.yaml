@@ -3,12 +3,13 @@ workflows:
     name: Android Native Build v76.0
     max_build_duration: 120
     environment:
-      android_signing:
-        - reference: release_key
+      flutter: false
     scripts:
-      - name: Build Android APK
+      - name: Grant execute permission for gradlew
         script: |
           chmod +x gradlew
+      - name: Build Debug APK Package
+        script: |
           ./gradlew assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
