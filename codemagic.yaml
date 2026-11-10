@@ -1,11 +1,11 @@
-workflows:
-  android-native-workflow:
-    name: Android Native Build v76.0
-    max_build_duration: 120
-    scripts:
-      - name: Install Android Build Tools and Build APK
-        script: |
-          apt-get update && apt-get install -y gradle
-          gradle assembleDebug
-    artifacts:
-      - app/build/outputs/apk/debug/*.apk
+buildscript {
+    ext.kotlin_version = '1.8.0'
+    dependencies {
+        classpath "com.android.tools.build:gradle:7.4.2"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
