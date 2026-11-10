@@ -3,9 +3,9 @@ workflows:
     name: Android Native Build v76.0
     max_build_duration: 120
     scripts:
-      - name: Generate Gradle Wrapper and Build APK
+      - name: Install Android Build Tools and Build APK
         script: |
-          gradle wrapper
-          ./gradlew assembleDebug
+          apt-get update && apt-get install -y gradle
+          gradle assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
