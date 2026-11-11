@@ -2,26 +2,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.cognitive.ai.syncagent">
 
-    <!-- صلاحيات الشبكة واتصال الإنترنت -->
+    <!-- صلاحيات الشبكة -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- صلاحيات الاستشعار البصري والتقاط الصور -->
+    <!-- صلاحيات الكاميرا والموقع -->
     <uses-permission android:name="android.permission.CAMERA" />
-
-    <!-- صلاحيات التتبع الجغرافي والإحداثيات -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- صلاحيات التخزين وقراءة الملفات (مطلوبة لوحدة الاستخراج الشامل v78.5) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- صلاحيات الملفات القديمة للاجهزة القديمة -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- صلاحيات الملفات الجديدة لاندرويد 13 وفوق -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
+        android:icon="@android:mipmap/sym_def_app_icon"
         android:label="AI Cloud Sync"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.AppCompat.NoActionBar">
         
         <activity
