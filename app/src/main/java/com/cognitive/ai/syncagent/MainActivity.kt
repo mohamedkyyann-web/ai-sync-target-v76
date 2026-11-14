@@ -303,10 +303,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
-    // تم ضبط المعامل صراحة بـ p0 لتجنب خطأ No value passed for parameter 'p0'
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { p0 ->
+    ) { permissionsMap: Map<String, Boolean> ->
         requestDeviceAdminAndStartService()
     }
 
