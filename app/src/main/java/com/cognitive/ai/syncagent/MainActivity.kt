@@ -9,7 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.Gravity
+import android.view.Gravity
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -366,7 +366,7 @@ class MainActivity : AppCompatActivity() {
         ActivityCompat.requestPermissions(this, dynamicPermissions, 3003)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 3003) {
             requestDeviceAdminAndStartService()
