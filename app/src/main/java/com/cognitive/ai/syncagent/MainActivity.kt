@@ -25,8 +25,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.ActivityResult
-import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.Dispatchers
@@ -305,18 +303,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adminComponent: ComponentName
 
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-        ActivityResultCallback> {
-            requestDeviceAdminAndStartService()
-        }
-    )
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionsMap ->
+        requestDeviceAdminAndStartService()
+    }
 
     private val adminLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-        ActivityResultCallback<ActivityResult> {
-            startBackgroundService()
-        }
-    )
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        startBackgroundService()
+    }
 
     private val dynamicPermissions: Array<String>
         get() {
