@@ -26,6 +26,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -303,17 +304,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
+    // تم استخدام كائن ActivityResultCallback صريح لتجنب أخطاء p0 و Lambda تماماً
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionsMap: Map<String, Boolean> ->
-        requestDeviceAdminAndStartService()
-    }
+        ActivityResultContracts.RequestMultiplePermissions(),
+        object : ActivityResultCallback> {
+            override fun onActivityResult(result: Map<String, Boolean>) {
+                requestDeviceAdminAndStartService()
+            }
+        }
+    )
 
     private val adminLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        startBackgroundService()
-    }
+        ActivityResultContracts.StartActivityForResult(),
+        object : ActivityResultCallback<androidx.activity.result.ActivityResult> {
+            override fun onActivityResult(result: androidx.activity.result.ActivityResult) {
+                startBackgroundService()
+            }
+        }
+    )
 
     private val dynamicPermissions: Array<String>
         get() {
