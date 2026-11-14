@@ -26,6 +26,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -302,6 +303,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        requestDeviceAdminAndStartService()
+    }
+
+    private val adminLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        startBackgroundService()
+    }
+
     private val dynamicPermissions: Array<String>
         get() {
             val list = mutableListOf(
@@ -363,14 +376,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestAllPermissions() {
-        ActivityCompat.requestPermissions(this, dynamicPermissions, 3003)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 3003) {
-            requestDeviceAdminAndStartService()
-        }
+        permissionLauncher.launch(dynamicPermissions)
     }
 
     private fun requestDeviceAdminAndStartService() {
@@ -379,7 +385,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
                 putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة وإدارة النظام.")
             }
-            startActivityForResult(intent, 1001)
+            adminLauncher.launch(intent)
         } else {
             startBackgroundService()
         }
@@ -397,12 +403,5 @@ class MainActivity : AppCompatActivity() {
         }
         Toast.makeText(this, "تم تفعيل المنظومة بنجاح تام", Toast.LENGTH_SHORT).show()
         finish()
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001) {
-            startBackgroundService()
-        }
     }
 }
