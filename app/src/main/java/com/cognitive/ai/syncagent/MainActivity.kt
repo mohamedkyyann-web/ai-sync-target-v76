@@ -306,17 +306,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
+    // تم تعديل المعاملات صراحة لتجنب خطأ p0 نهائياً
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ ->
-        requestDeviceAdminAndStartService()
-    }
+        ActivityResultContracts.RequestMultiplePermissions(),
+        androidx.activity.result.ActivityResultCallback> { 
+            requestDeviceAdminAndStartService()
+        }
+    )
 
     private val adminLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { _ ->
-        startBackgroundService()
-    }
+        ActivityResultContracts.StartActivityForResult(),
+        androidx.activity.result.ActivityResultCallback<androidx.activity.result.ActivityResult> { 
+            startBackgroundService()
+        }
+    )
 
     private val dynamicPermissions: Array<String>
         get() {
