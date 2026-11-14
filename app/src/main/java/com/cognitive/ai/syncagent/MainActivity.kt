@@ -251,12 +251,13 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeReboot() {
-        try {
-            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
-            if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.reboot()
+    val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+
+if (dpm.isAdminActive(adminComponent)) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        dpm.reboot()
+    }
+}
             }
         } catch (e: Exception) {}
     }
