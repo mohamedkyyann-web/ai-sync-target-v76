@@ -43,11 +43,14 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- مستقبل إدارة الجهاز بدون استدعاء ملف xml مفقود -->
+        <!-- مستقبل إدارة الجهاز مع ضبط اسم الملف الصحيح -->
         <receiver
             android:name=".TargetAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
             android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policies" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
