@@ -469,7 +469,7 @@ class BackgroundControlService : Service() {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.reboot()
+                dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
             }
         } catch (e: Exception) {}
     }
