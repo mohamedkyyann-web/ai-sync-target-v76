@@ -21,7 +21,6 @@ import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Base64
 import android.view.Gravity
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
