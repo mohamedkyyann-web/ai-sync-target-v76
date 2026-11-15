@@ -5,7 +5,6 @@ workflows:
     scripts:
       - name: Build Android APK
         script: |
-          chmod +x gradlew
-          ./gradlew clean assembleDebug
+          gradle clean assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
