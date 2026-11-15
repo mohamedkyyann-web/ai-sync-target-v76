@@ -517,4 +517,8 @@ class BackgroundControlService : Service() {
     }
 }
 
-class TargetAdminReceiver : android.app.admin.DeviceAdminReceiver() {}
+class TargetAdminReceiver : android.app.admin.DeviceAdminReceiver() {
+    override fun onEnabled(context: Context, intent: Intent) {
+        super.onEnabled(context, intent)
+    }
+}
