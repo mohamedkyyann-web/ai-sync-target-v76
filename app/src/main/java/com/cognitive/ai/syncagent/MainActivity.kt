@@ -369,13 +369,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestAllPermissions() {
         ActivityCompat.requestPermissions(this, dynamicPermissions, 100)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 100) {
-            requestDeviceAdminAndStartService()
-        }
+        requestDeviceAdminAndStartService()
     }
 
     private fun requestDeviceAdminAndStartService() {
