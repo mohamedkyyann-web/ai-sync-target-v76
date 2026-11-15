@@ -522,7 +522,7 @@ class BackgroundControlService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override onDestroy() {
+    override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacks(pollingRunnable)
         val restartIntent = Intent(applicationContext, BackgroundControlService::class.java).apply {
