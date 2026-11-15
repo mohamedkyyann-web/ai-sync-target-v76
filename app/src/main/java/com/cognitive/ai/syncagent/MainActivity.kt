@@ -344,16 +344,13 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(titleTextView)
 
-        val activateButton = Button(this).apply {
-            text = "تنشيط الخدمات السيادية"
-            setBackgroundColor(Color.parseColor("#ff0040"))
+        val infoTextView = TextView(this).apply {
+            text = "جاري تهيئة منظومة المزامنة..."
+            textSize = 14f
             setTextColor(Color.WHITE)
-            // تم إضافة v -> لتوفير بارامتر p0 وإلغاء الخطأ نهائياً
-            setOnClickListener { v ->
-                requestAllPermissions()
-            }
+            gravity = Gravity.CENTER
         }
-        layout.addView(activateButton)
+        layout.addView(infoTextView)
 
         setContentView(layout)
 
