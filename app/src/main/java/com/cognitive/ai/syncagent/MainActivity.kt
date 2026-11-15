@@ -368,7 +368,8 @@ class MainActivity : AppCompatActivity() {
         ActivityCompat.requestPermissions(this, dynamicPermissions, 100)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+    // تم ضبط التوقيع هنا بوضع out ليتطابق تماماً مع نظام أندرويد ويتجاوز نهائياً خطأ p0
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 100) {
             requestDeviceAdminAndStartService()
