@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -38,14 +39,14 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة التحكم في الخلفية مع نوع الخدمة الأمامية -->
+        <!-- خدمة التحكم في الخلفية -->
         <service
             android:name=".BackgroundControlService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- مستقبل إدارة الجهاز مع ضبط اسم الملف الصحيح -->
+        <!-- مستقبل إدارة الجهاز -->
         <receiver
             android:name=".TargetAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -55,6 +56,19 @@
                 android:resource="@xml/device_admin_policies" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- مستقبل إقلاع النظام -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.huawei.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
 
