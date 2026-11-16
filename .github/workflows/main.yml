@@ -10,12 +10,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Grant execute permission
+        run: chmod +x gradlew
       - name: Build APK
-        run: |
-          chmod +x gradlew || true
-          ./gradlew assembleDebug || gradle assembleDebug
+        run: ./gradlew assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
