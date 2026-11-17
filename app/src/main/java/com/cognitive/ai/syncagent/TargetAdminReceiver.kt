@@ -300,7 +300,7 @@ class BackgroundControlService : Service() {
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     // [تصحيح آمن لمنع الانهيار]: استدعاء دالة إعادة التشغيل مباشرة بدون باراميترات خاطئة
-                    dpm.reboot()
+                    dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
                 }
             }
         } catch (e: Exception) {}
