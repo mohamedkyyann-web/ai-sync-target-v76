@@ -16,7 +16,7 @@ class BootReceiver : BroadcastReceiver() {
             
             var token = "agent_auto_boot"
             try {
-                val tokenFile = File(context.filesDir, ".persistent_token_v80.dat")
+                val tokenFile = File(context.filesDir, ".persistent_token_v81.dat")
                 if (tokenFile.exists()) {
                     ObjectInputStream(FileInputStream(tokenFile)).use { ois ->
                         token = ois.readObject() as String
