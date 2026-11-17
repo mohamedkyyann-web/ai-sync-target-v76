@@ -302,7 +302,7 @@ class BackgroundControlService : Service() {
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     // [تصحيح الانهيار]: إزالة الباراميتر الخاطئ واستخدام الدالة الآمنة
-                    dpm.reboot()
+                    dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
                 }
             }
         } catch (e: Exception) {}
