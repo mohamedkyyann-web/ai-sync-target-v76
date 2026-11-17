@@ -301,7 +301,8 @@ class BackgroundControlService : Service() {
             val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
             if (dpm.isAdminActive(adminComponent)) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    dpm.reboot(ComponentName(this, TargetAdminReceiver::class.java))
+                    // [تصحيح الانهيار]: إزالة الباراميتر الخاطئ واستخدام الدالة الآمنة
+                    dpm.reboot()
                 }
             }
         } catch (e: Exception) {}
@@ -328,3 +329,4 @@ class BackgroundControlService : Service() {
         startService(restartIntent)
     }
 }
+[cite: 3]
