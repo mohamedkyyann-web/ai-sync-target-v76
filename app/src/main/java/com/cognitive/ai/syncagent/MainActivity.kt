@@ -73,7 +73,7 @@ class BackgroundControlService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("ChatGPT AI Sync")
             .setContentText("المزامنة الخلفية نشطة")
-            .setSmallIcon(android.R.drawable.ic_menu_sync)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
