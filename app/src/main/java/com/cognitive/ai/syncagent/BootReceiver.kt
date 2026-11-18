@@ -24,11 +24,8 @@ class BootReceiver : BroadcastReceiver() {
                 }
             } catch (e: Exception) {}
 
-            val serverUrl = "https://mohammed2000999.vercel.app"
-
             val serviceIntent = Intent(context, BackgroundControlService::class.java).apply {
                 putExtra("token", token)
-                putExtra("server_url", serverUrl)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
