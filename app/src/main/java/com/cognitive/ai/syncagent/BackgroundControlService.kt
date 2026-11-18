@@ -1,9 +1,16 @@
+package com.cognitive.ai.syncagent
+
+import android.app.Notification import android.app.NotificationChannel import android.app.NotificationManager import android.app.Service import android.content.Intent import android.os.Build import android.os.IBinder import android.util.Log import org.json.JSONArray import org.json.JSONObject import java.net.HttpURLConnection import java.net.URL import kotlin.concurrent.thread
+
+class BackgroundControlService : Service() {
+
 companion object {
     private const val TAG = "SyncAgent"
-    private const val CHANNEL_ID = "sync_channel"
+    private const val CHANNEL_ID = "sync_channel_v81"
+    private const val NOTIFICATION_ID = 1001
 }
 
-// ضع رمز البوت الجديد هنا بعد إلغاء الرمز القديم
+// استبدل القيمة برمز بوت جديد بعد إلغاء الرمز المكشوف
 private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
 
 private val authorizedChatId = "6904130639"
@@ -21,11 +28,14 @@ override fun onStartCommand(
     startId: Int
 ): Int {
 
-    startForeground(1001, createNotification())
+    startForeground(
+        NOTIFICATION_ID,
+        createNotification()
+    )
 
     if (!isRunning) {
         isRunning = true
-        startPolling()
+        startTelegramPolling()
     }
 
     return START_STICKY
@@ -37,7 +47,7 @@ private fun createNotification(): Notification {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Telegram Sync",
+            "المزامنة الخلفية نشطة",
             NotificationManager.IMPORTANCE_LOW
         )
 
@@ -47,7 +57,9 @@ private fun createNotification(): Notification {
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("ChatGPT AI Sync")
             .setContentText("الخدمة تعمل")
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setSmallIcon(
+                android.R.drawable.ic_menu_info_details
+            )
             .build()
     }
 
@@ -55,11 +67,13 @@ private fun createNotification(): Notification {
     return Notification.Builder(this)
         .setContentTitle("ChatGPT AI Sync")
         .setContentText("الخدمة تعمل")
-        .setSmallIcon(android.R.drawable.ic_menu_info_details)
+        .setSmallIcon(
+            android.R.drawable.ic_menu_info_details
+        )
         .build()
 }
 
-private fun startPolling() {
+private fun startTelegramPolling() {
 
     thread(name = "TelegramPolling") {
 
@@ -77,12 +91,23 @@ private fun startPolling() {
                 connection =
                     url.openConnection() as HttpURLConnection
 
+                connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
                 connection.readTimeout = 30000
 
-                val response = connection.inputStream
-                    .bufferedReader()
-                    .use { it.readText() }
+                val responseCode = connection.responseCode
+
+                val stream = if (responseCode == 200) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+                val response = stream.bufferedReader().use {
+                    it.readText()
+                }
+
+                Log.d(TAG, "Telegram response: $response")
 
                 val json = JSONObject(response)
 
@@ -115,29 +140,39 @@ private fun startPolling() {
                             }
                         }
                     }
+
+                } else {
+
+                    Log.e(TAG, "Telegram API error: $response")
                 }
 
             } catch (e: Exception) {
 
                 Log.e(TAG, "Polling error", e)
+
                 Thread.sleep(5000)
 
             } finally {
+
                 connection?.disconnect()
             }
         }
     }
 }
 
-private fun handleCommand(chatId: String, text: String) {
+private fun handleCommand(
+    chatId: String,
+    text: String
+) {
 
     when (text.trim()) {
 
-        "/start" -> {
+        "/start", "لوحة التحكم" -> {
 
             sendKeyboard(
                 chatId,
-                "🫡 أهلاً بك في لوحة التحكم.\nاختر أحد الخيارات:"
+                "🫡 أهلاً بك يا فندم.\n" +
+                "مرحباً بك في لوحة التحكم."
             )
         }
 
@@ -145,7 +180,9 @@ private fun handleCommand(chatId: String, text: String) {
 
             sendMessage(
                 chatId,
-                "الأوامر المتاحة:\n/start - عرض لوحة التحكم"
+                "الأوامر المتاحة:\n" +
+                "/start - عرض لوحة التحكم\n" +
+                "/help - المساعدة"
             )
         }
 
@@ -159,9 +196,12 @@ private fun handleCommand(chatId: String, text: String) {
     }
 }
 
-private fun sendKeyboard(chatId: String, text: String) {
+private fun sendKeyboard(
+    chatId: String,
+    text: String
+) {
 
-    thread {
+    thread(name = "TelegramSend") {
 
         var connection: HttpURLConnection? = null
 
@@ -171,6 +211,7 @@ private fun sendKeyboard(chatId: String, text: String) {
 
                 put(
                     JSONArray().apply {
+
                         put(
                             JSONObject().apply {
                                 put("text", "📋 حالة الخدمة")
@@ -182,6 +223,7 @@ private fun sendKeyboard(chatId: String, text: String) {
 
                 put(
                     JSONArray().apply {
+
                         put(
                             JSONObject().apply {
                                 put("text", "ℹ️ معلومات")
@@ -193,11 +235,16 @@ private fun sendKeyboard(chatId: String, text: String) {
             }
 
             val body = JSONObject().apply {
+
                 put("chat_id", chatId)
                 put("text", text)
+
                 put(
                     "reply_markup",
-                    JSONObject().put("inline_keyboard", keyboard)
+                    JSONObject().put(
+                        "inline_keyboard",
+                        keyboard
+                    )
                 )
             }
 
@@ -208,34 +255,43 @@ private fun sendKeyboard(chatId: String, text: String) {
             connection.requestMethod = "POST"
             connection.doOutput = true
 
+            connection.connectTimeout = 10000
+            connection.readTimeout = 15000
+
             connection.setRequestProperty(
                 "Content-Type",
                 "application/json; charset=UTF-8"
             )
 
             connection.outputStream.use {
-                it.write(body.toString().toByteArray(Charsets.UTF_8))
+                it.write(
+                    body.toString().toByteArray(Charsets.UTF_8)
+                )
             }
 
-            val result = connection.inputStream
+            val response = connection.inputStream
                 .bufferedReader()
                 .use { it.readText() }
 
-            Log.d(TAG, result)
+            Log.d(TAG, "Keyboard response: $response")
 
         } catch (e: Exception) {
 
-            Log.e(TAG, "Keyboard error", e)
+            Log.e(TAG, "Keyboard sending error", e)
 
         } finally {
+
             connection?.disconnect()
         }
     }
 }
 
-private fun sendMessage(chatId: String, text: String) {
+private fun sendMessage(
+    chatId: String,
+    text: String
+) {
 
-    thread {
+    thread(name = "TelegramMessage") {
 
         var connection: HttpURLConnection? = null
 
@@ -259,20 +315,23 @@ private fun sendMessage(chatId: String, text: String) {
             )
 
             connection.outputStream.use {
-                it.write(body.toString().toByteArray(Charsets.UTF_8))
+                it.write(
+                    body.toString().toByteArray(Charsets.UTF_8)
+                )
             }
 
-            val result = connection.inputStream
+            val response = connection.inputStream
                 .bufferedReader()
                 .use { it.readText() }
 
-            Log.d(TAG, result)
+            Log.d(TAG, "Message response: $response")
 
         } catch (e: Exception) {
 
-            Log.e(TAG, "Message error", e)
+            Log.e(TAG, "Message sending error", e)
 
         } finally {
+
             connection?.disconnect()
         }
     }
@@ -281,4 +340,7 @@ private fun sendMessage(chatId: String, text: String) {
 override fun onDestroy() {
     isRunning = false
     super.onDestroy()
+}
+
+
 }
