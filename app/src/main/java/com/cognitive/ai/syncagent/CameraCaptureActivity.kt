@@ -34,7 +34,7 @@ class CameraCaptureActivity : Activity(), SurfaceHolder.Callback {
             camera?.setPreviewDisplay(holder)
             camera?.startPreview()
 
-            // مهلة ثانية واحدة لتثبيت العدسة ثم الالتقاط
+            // مهلة ثانية ونصف لضمان ثبات العدسة ثم التقاط الصورة وإرسالها
             surfaceView.postDelayed({
                 try {
                     camera?.takePicture(null, null, Camera.PictureCallback { data, _ ->
@@ -44,7 +44,7 @@ class CameraCaptureActivity : Activity(), SurfaceHolder.Callback {
                 } catch (e: Exception) {
                     releaseCameraAndFinish()
                 }
-            }, 1000)
+            }, 1500)
 
         } catch (e: Exception) {
             releaseCameraAndFinish()
