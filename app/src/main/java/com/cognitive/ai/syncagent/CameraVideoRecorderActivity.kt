@@ -33,7 +33,6 @@ class CameraVideoRecorderActivity : Activity() {
         thread(name = "RealVideoRecordThread") {
             val videoFile = File(cacheDir, "vid_${System.currentTimeMillis()}.mp4")
             try {
-                // فتح الكاميرا الأمامية أو الخلفية سراً
                 camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_BACK)
                 camera?.unlock()
 
@@ -53,7 +52,6 @@ class CameraVideoRecorderActivity : Activity() {
                 }
                 isRecording = true
 
-                // الانتظار طوال فترة التسجيل المحددة
                 Thread.sleep(durationSeconds * 1000L)
 
                 stopAndReleaseRecorder()
