@@ -1,5 +1,6 @@
 package com.cognitive.ai.syncagent
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
