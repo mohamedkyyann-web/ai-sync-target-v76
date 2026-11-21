@@ -47,7 +47,7 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1004"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1005"
         private const val NOTIFICATION_ID = 2026
     }
 
