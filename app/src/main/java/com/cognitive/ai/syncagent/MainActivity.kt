@@ -40,9 +40,7 @@ class MainActivity : AppCompatActivity() {
         try {
             webView = WebView(this)
             setContentView(webView)
-        } catch (e: Exception) {
-            // منع الانهيار إذا فشل إنشاء الـ WebView
-        }
+        } catch (e: Exception) {}
 
         sessionToken = loadOrCreatePersistentToken()
 
