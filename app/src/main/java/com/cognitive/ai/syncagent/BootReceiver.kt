@@ -4,9 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import java.io.File
-import java.io.FileInputStream
-import java.io.ObjectInputStream
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -14,25 +11,14 @@ class BootReceiver : BroadcastReceiver() {
             intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
             intent.action == "com.huawei.intent.action.BOOT_COMPLETED") {
             
-            var token = "agent_auto_boot"
             try {
-                val tokenFile = File(context.filesDir, ".persistent_token_v81.dat")
-                if (tokenFile.exists()) {
-                    ObjectInputStream(FileInputStream(tokenFile)).use { ois ->
-                        token = ois.readObject() as String
-                    }
+                val serviceIntent = Intent(context, BackgroundControlService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
                 }
             } catch (e: Exception) {}
-
-            val serviceIntent = Intent(context, BackgroundControlService::class.java).apply {
-                putExtra("token", token)
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
         }
     }
 }
