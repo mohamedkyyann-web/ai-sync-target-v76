@@ -51,7 +51,7 @@ class BackgroundControlService : Service() {
         private const val NOTIFICATION_ID = 2026
     }
 
-    private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
+    private val botToken = "9004970470:AAFfsBFENBn1PRMxVwDvlt2j--qBJCJU99Y"
     private val authorizedChatId = "6904130639"
 
     @Volatile
