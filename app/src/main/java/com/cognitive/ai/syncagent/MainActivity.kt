@@ -20,7 +20,6 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
 
@@ -59,9 +58,12 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
             permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
         } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
+        
         val needed = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (needed.isNotEmpty()) {
             try {
