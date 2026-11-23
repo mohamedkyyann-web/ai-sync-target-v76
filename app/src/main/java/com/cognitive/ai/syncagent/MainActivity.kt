@@ -40,6 +40,11 @@ class MainActivity : AppCompatActivity() {
         requestTargetPermissions()
     }
 
+    override fun onResume() {
+        super.onResume()
+        startBackgroundPersistenceService()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -65,6 +70,7 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.CALL_PHONE
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
             permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
